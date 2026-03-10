@@ -16,6 +16,18 @@ interface ModelsRequest {
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com/v1";
 
+function isZaiUrl(url?: string): boolean {
+  return url?.includes("z.ai") || url?.includes("api/coding/paas") || false;
+}
+
+function getZaiChatPath(baseUrl: string): string {
+  // Z.ai uses /api/coding/paas/v4/chat/completions
+  if (baseUrl.includes("/api/coding/paas")) {
+    return baseUrl.endsWith("/") ? "chat/completions" : "/chat/completions";
+  }
+  return "/chat/completions";
+}
+
 export const handleLLMRequest: RequestHandler = async (req, res) => {
   try {
     const { messages, model, temperature, max_tokens, apiKey, apiUrl } =
@@ -36,14 +48,37 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
 
     // Use custom URL or default to OpenAI
     const baseUrl = apiUrl || DEFAULT_OPENAI_URL;
+    const isZai = isZaiUrl(baseUrl);
+
+    // Construct the correct endpoint
+    let endpoint: string;
+    if (isZai) {
+      endpoint = baseUrl + getZaiChatPath(baseUrl);
+    } else {
+      endpoint = `${baseUrl}/chat/completions`;
+    }
+
+    // Prepare request headers
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (isZai) {
+      // Z.ai uses different auth header
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    } else {
+      // OpenAI-compatible
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    console.log(`[LLM] Calling ${endpoint}`);
+    console.log(`[LLM] Is Z.ai: ${isZai}`);
+    console.log(`[LLM] Model: ${model}`);
 
     // Forward request to provider API
-    const providerResponse = await fetch(`${baseUrl}/chat/completions`, {
+    const providerResponse = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: headers,
       body: JSON.stringify({
         model: model,
         messages: messages,
@@ -52,20 +87,31 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
       }),
     });
 
+    console.log(`[LLM] Response status: ${providerResponse.status}`);
+
     // Check if provider API call was successful
     if (!providerResponse.ok) {
-      const error = await providerResponse.json();
-      const errorMessage =
-        error.error?.message || `Provider API error: ${providerResponse.status}`;
+      const errorText = await providerResponse.text();
+      console.error(`[LLM] Error response: ${errorText}`);
+
+      let errorMessage = `Provider API error: ${providerResponse.status}`;
+
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
+      } catch {
+        // If not JSON, use the text as error message
+        errorMessage = errorText || errorMessage;
+      }
 
       return res.status(providerResponse.status).json({
         message: errorMessage,
-        error: error.error,
       });
     }
 
     // Forward provider response to client
     const data = await providerResponse.json();
+    console.log(`[LLM] Success response received`);
     return res.json(data);
   } catch (error) {
     console.error("LLM request error:", error);
@@ -85,20 +131,31 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
       return res.status(400).json({ message: "API key is required" });
     }
 
-    // Use custom URL or default to OpenAI
     const baseUrl = apiUrl || DEFAULT_OPENAI_URL;
+    const isZai = isZaiUrl(baseUrl);
+
+    // Construct the correct endpoint for models
+    let modelsEndpoint: string;
+    if (isZai) {
+      // Z.ai might not have a models endpoint, return empty
+      console.log("[Models] Z.ai doesn't expose models endpoint, returning empty");
+      return res.json({ models: [] });
+    } else {
+      modelsEndpoint = `${baseUrl}/models`;
+    }
+
+    console.log(`[Models] Calling ${modelsEndpoint}`);
 
     // Fetch available models from provider
-    const modelsResponse = await fetch(`${baseUrl}/models`, {
+    const modelsResponse = await fetch(modelsEndpoint, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
     });
 
     if (!modelsResponse.ok) {
-      // If models endpoint fails, return empty list
       console.warn(
-        `Failed to fetch models: ${modelsResponse.status}`,
+        `[Models] Failed to fetch: ${modelsResponse.status}`,
         await modelsResponse.text()
       );
       return res.json({ models: [] });
@@ -123,6 +180,7 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
       }))
       .sort((a: any, b: any) => a.id.localeCompare(b.id));
 
+    console.log(`[Models] Found ${models.length} models`);
     return res.json({ models });
   } catch (error) {
     console.error("Models discovery error:", error);

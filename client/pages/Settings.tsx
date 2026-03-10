@@ -91,10 +91,22 @@ export default function Settings() {
 
     setIsTesting(true);
     try {
-      const provider = createLLMProvider(config);
-      const isValid = await provider.validateConfig();
+      const response = await fetch("/api/llm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user" as const, content: "test" }],
+          model: config.model || "gpt-4-turbo",
+          temperature: 0.7,
+          max_tokens: 100,
+          apiKey: config.apiKey,
+          apiUrl: config.apiUrl,
+        }),
+      });
 
-      if (isValid) {
+      if (response.ok) {
         setValidationStatus("valid");
         toast({
           title: "Success",
@@ -104,21 +116,26 @@ export default function Settings() {
         // Auto-discover models on successful connection
         await handleDiscoverModels();
       } else {
+        const errorData = await response.json();
+        const errorMsg = errorData.message || "Connection failed";
         setValidationStatus("invalid");
         toast({
           title: "Error",
-          description: "Failed to validate API key. Please check and try again.",
+          description: errorMsg,
           variant: "destructive",
         });
+        console.error("Test connection error:", errorData);
       }
     } catch (error) {
       setValidationStatus("invalid");
+      const errorMsg =
+        error instanceof Error ? error.message : "Connection failed";
       toast({
         title: "Error",
-        description:
-          error instanceof Error ? error.message : "Connection failed",
+        description: errorMsg,
         variant: "destructive",
       });
+      console.error("Test connection error:", error);
     } finally {
       setIsTesting(false);
     }
