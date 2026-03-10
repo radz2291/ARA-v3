@@ -126,23 +126,16 @@ export default function Agents() {
 
   const handleChatWithAgent = async (agentId: string) => {
     try {
-      // Create a new session if needed
-      const sessionResponse = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!sessionResponse.ok) {
-        const errorData = await sessionResponse.text();
-        throw new Error(`Failed to create session: ${sessionResponse.status} - ${errorData}`);
+      // Get the current session (create if doesn't exist)
+      const currentSessionId = localStorage.getItem("sessionId");
+      if (!currentSessionId) {
+        throw new Error("No active session found");
       }
-      const session = await sessionResponse.json();
-      console.log("Session created:", session.id);
 
-      // Create a new conversation with this agent
+      // Create a new conversation with this agent in the current session
       const agentName = agents.find((a) => a.id === agentId)?.name || "Agent";
       const conversationResponse = await fetch(
-        `/api/sessions/${session.id}/conversations`,
+        `/api/sessions/${currentSessionId}/conversations`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -160,7 +153,7 @@ export default function Agents() {
       console.log("Conversation created:", conversation.id);
 
       // Navigate to chat with the conversation ID
-      const chatUrl = `/chat?sessionId=${session.id}&conversationId=${conversation.id}&agentId=${agentId}`;
+      const chatUrl = `/chat?conversationId=${conversation.id}&agentId=${agentId}`;
       console.log("Navigating to:", chatUrl);
       navigate(chatUrl);
     } catch (error) {

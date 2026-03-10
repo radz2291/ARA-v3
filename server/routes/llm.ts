@@ -56,14 +56,14 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
     let finalModel = model;
 
     if (sessionId) {
-      // Use server-stored config from session
+      // Try to use server-stored config from session
       const config = storage.sessions.getConfig(sessionId);
-      if (!config) {
-        return res.status(400).json({ message: "No configuration found for session" });
+      if (config) {
+        finalApiKey = config.apiKey;
+        finalApiUrl = config.apiUrl;
+        finalModel = config.model;
       }
-      finalApiKey = config.apiKey;
-      finalApiUrl = config.apiUrl;
-      finalModel = config.model;
+      // If session doesn't have config, fall back to apiKey from request body
     }
 
     // Validate API key
@@ -161,13 +161,13 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
     let finalApiUrl = apiUrl;
 
     if (sessionId) {
-      // Use server-stored config from session
+      // Try to use server-stored config from session
       const config = storage.sessions.getConfig(sessionId);
-      if (!config) {
-        return res.status(400).json({ message: "No configuration found for session" });
+      if (config) {
+        finalApiKey = config.apiKey;
+        finalApiUrl = config.apiUrl;
       }
-      finalApiKey = config.apiKey;
-      finalApiUrl = config.apiUrl;
+      // If session doesn't have config, fall back to apiKey from request body
     }
 
     if (!finalApiKey) {

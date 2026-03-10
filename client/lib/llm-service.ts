@@ -61,7 +61,7 @@ export class OpenAIProvider {
   }
 
   async generateResponse(messages: LLMMessage[]): Promise<LLMResponse> {
-    // Use sessionId if available for server-side config, otherwise use apiKey
+    // Always have a fallback apiKey if available
     if (!this.sessionId && !this.config.apiKey) {
       throw new Error("API key not configured");
     }
@@ -74,10 +74,13 @@ export class OpenAIProvider {
         max_tokens: this.config.maxTokens ?? 2000,
       };
 
-      // Use either sessionId or apiKey
+      // Try to use sessionId for server-side config, but always include apiKey as fallback
       if (this.sessionId) {
         requestBody.sessionId = this.sessionId;
-      } else {
+      }
+
+      // Always include apiKey as a fallback (server will try sessionId first if provided)
+      if (this.config.apiKey) {
         requestBody.apiKey = this.config.apiKey;
         requestBody.apiUrl = this.config.apiUrl;
       }
