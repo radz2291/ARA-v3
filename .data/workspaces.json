@@ -1,0 +1,18 @@
+[
+  {
+    "id": "b6c13cc8-4fa7-4ac9-8a39-071adcd33700",
+    "name": "War Meeting",
+    "description": "Discussion for the user",
+    "agentIds": [
+      "c0ad62d9-f424-4f79-8ab3-57505a03d235",
+      "74febf61-1711-4caf-8b17-8e19ed78efb3",
+      "1dbfb930-ea66-474d-b550-10de3df948ee"
+    ],
+    "leadAgentId": "c0ad62d9-f424-4f79-8ab3-57505a03d235",
+    "fileSystem": {},
+    "executionContext": {},
+    "status": "active",
+    "createdAt": "2026-03-10T14:26:07.050Z",
+    "updatedAt": "2026-03-10T14:26:07.050Z"
+  }
+]
