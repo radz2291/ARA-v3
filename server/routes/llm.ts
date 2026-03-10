@@ -16,17 +16,25 @@ interface ModelsRequest {
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com/v1";
 
+// Z.ai models list for fallback
+const ZAI_MODELS = [
+  "glm-4.7",
+  "glm-4.5-flash",
+  "glm-4.5-turbo",
+  "glm-4",
+  "glm-3-turbo",
+];
+
 function isZaiUrl(url?: string): boolean {
   return url?.includes("z.ai") || url?.includes("api/coding/paas") || false;
 }
 
-function getZaiChatPath(baseUrl: string): string {
-  // Z.ai endpoint: https://api.z.ai/api/coding/paas/v4
-  // Chat completions path: /chat/completions (appended to base)
-  if (baseUrl.includes("/api/coding/paas")) {
-    return baseUrl.endsWith("/") ? "chat/completions" : "/chat/completions";
+function getChatPath(baseUrl: string): string {
+  // Ensure we append /chat/completions if not already present
+  if (baseUrl.includes("/chat/completions")) {
+    return baseUrl;
   }
-  return "/chat/completions";
+  return baseUrl.endsWith("/") ? baseUrl + "chat/completions" : baseUrl + "/chat/completions";
 }
 
 export const handleLLMRequest: RequestHandler = async (req, res) => {
@@ -54,7 +62,7 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
     // Construct the correct endpoint
     let endpoint: string;
     if (isZai) {
-      endpoint = baseUrl + getZaiChatPath(baseUrl);
+      endpoint = getChatPath(baseUrl);
     } else {
       endpoint = `${baseUrl}/chat/completions`;
     }
@@ -89,22 +97,6 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
 
     console.log(`[LLM] Response status: ${providerResponse.status}`);
 
-    // If Z.ai endpoint fails, try alternative format (base URL might be the chat endpoint)
-    if (!providerResponse.ok && isZai && !endpoint.includes("/chat/completions")) {
-      console.log(`[LLM] Trying alternative Z.ai endpoint...`);
-      const altEndpoint = baseUrl;
-      providerResponse = await fetch(altEndpoint, {
-        method: "POST",
-        headers: headers,
-        body: JSON.stringify({
-          model: model,
-          messages: messages,
-          temperature: temperature || 0.7,
-          max_tokens: max_tokens || 2000,
-        }),
-      });
-      console.log(`[LLM] Alternative response status: ${providerResponse.status}`);
-    }
 
     // Check if provider API call was successful
     if (!providerResponse.ok) {
@@ -154,14 +146,15 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
     // Construct the correct endpoint for models
     let modelsEndpoint: string;
     if (isZai) {
-      // Z.ai might not have a models endpoint, return empty
-      console.log("[Models] Z.ai doesn't expose models endpoint, returning empty");
-      return res.json({ models: [] });
+      // Z.ai uses /models endpoint (without /chat/completions)
+      modelsEndpoint = baseUrl.includes("/chat/completions")
+        ? baseUrl.replace("/chat/completions", "/models")
+        : (baseUrl.endsWith("/") ? baseUrl + "models" : baseUrl + "/models");
     } else {
       modelsEndpoint = `${baseUrl}/models`;
     }
 
-    console.log(`[Models] Calling ${modelsEndpoint}`);
+    console.log(`[Models] Calling ${modelsEndpoint} (isZai: ${isZai})`);
 
     // Fetch available models from provider
     const modelsResponse = await fetch(modelsEndpoint, {
@@ -172,18 +165,31 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
 
     if (!modelsResponse.ok) {
       console.warn(
-        `[Models] Failed to fetch: ${modelsResponse.status}`,
-        await modelsResponse.text()
+        `[Models] Failed to fetch from ${modelsEndpoint}: ${modelsResponse.status}`
       );
+
+      // If Z.ai, use fallback models list
+      if (isZai) {
+        console.log("[Models] Using Z.ai fallback models list");
+        const models = ZAI_MODELS.map((id) => ({
+          id,
+          name: id,
+          owned_by: "z.ai",
+        }));
+        return res.json({ models });
+      }
+
       return res.json({ models: [] });
     }
 
     const data = await modelsResponse.json();
 
-    // Filter to chat models (exclude embedding and other models)
-    const models = (data.data || [])
+    // Filter to chat models
+    const allModels = data.data || [];
+    const models = allModels
       .filter(
         (model: any) =>
+          model.id.includes("glm") ||
           model.id.includes("gpt") ||
           model.id.includes("claude") ||
           model.id.includes("mistral") ||
@@ -197,7 +203,7 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
       }))
       .sort((a: any, b: any) => a.id.localeCompare(b.id));
 
-    console.log(`[Models] Found ${models.length} models`);
+    console.log(`[Models] Found ${models.length} models from ${isZai ? "Z.ai" : "provider"}`);
     return res.json({ models });
   } catch (error) {
     console.error("Models discovery error:", error);

@@ -310,11 +310,12 @@ export default function Settings() {
                     type="text"
                     value={config.apiUrl}
                     onChange={(e) => handleApiUrlChange(e.target.value)}
-                    placeholder="https://api.openai.com/v1 or https://api.z.ai/api/coding/paas/v4"
+                    placeholder="Leave empty for OpenAI or https://api.z.ai/api/coding/paas/v4"
                     className="bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
                   />
                   <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
-                    Leave empty to use OpenAI. For Z.ai use: https://api.z.ai/api/coding/paas/v4
+                    <strong>Z.ai:</strong> Use https://api.z.ai/api/coding/paas/v4 with models like <code className="bg-muted px-1 rounded">glm-4.7</code>, <code className="bg-muted px-1 rounded">glm-4.5-flash</code>.
+                    Leave empty for OpenAI with models like <code className="bg-muted px-1 rounded">gpt-4-turbo</code>
                   </p>
                 </div>
               </div>
