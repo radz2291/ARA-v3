@@ -65,9 +65,30 @@
   {
     "id": "70bbab5b-70d5-4583-bb1c-d000f8b34210",
     "sessionId": "60f07ab7-c578-4db4-aadf-36807798f4ec",
-    "title": "New Conversation",
-    "messages": [],
+    "title": "What is your name?",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is your name?",
+        "timestamp": "2026-03-10T10:37:59.738Z"
+      },
+      {
+        "role": "assistant",
+        "content": "I'm GLM, a large language model developed by Z.ai. I'm designed to assist with information, answer questions, and engage in conversations across a wide range of topics. I don't have personal feelings or consciousness, but I'm here to help in a friendly and professional way.\n\nIs there something specific you'd like to know or discuss today? I'm happy to help with questions, provide information, or just chat.",
+        "timestamp": "2026-03-10T10:38:09.522Z"
+      },
+      {
+        "role": "user",
+        "content": "Hwo can you help with school?",
+        "timestamp": "2026-03-10T10:38:29.646Z"
+      },
+      {
+        "role": "assistant",
+        "content": "I can be a great study partner and tutor! Here are several ways I can help you with schoolwork:\n\n**1. Explaining Difficult Concepts**\nIf you're stuck on a topic like algebra, photosynthesis, or history, I can break it down into simpler terms or explain it using analogies. You can just say, \"Explain [topic] like I'm 5 years old.\"\n\n**2. Homework Help**\nI can guide you through problems step-by-step.\n*   **Math:** I can solve equations and show you the work so you understand the method.\n*   **Science:** I can help explain formulas or scientific theories.\n*   **Humanities:** I can help analyze themes in literature or historical events.\n\n**3. Writing and Editing**\n*   **Essays:** I can help you brainstorm ideas, create outlines, or write thesis statements.\n*   **Grammar:** Paste a paragraph, and I can check for spelling and grammar errors.\n*   **Vocabulary:** Ask me for synonyms or better words to use in your writing.\n\n**4. Study Aids**\n*   **Flashcards:** I can create flashcards for you to memorize dates, definitions, or vocabulary.\n*   **Quizzes:** I can generate practice questions for you to test your knowledge before a test.\n*   **Summaries:** You can paste long articles or notes, and I can summarize the key points for you.\n\n**5. Coding and Computer Science**\nIf you are learning to code, I can help debug code, explain what a specific line of code does, or help you build a project.\n\n**Important Note:**\nI am here to help you *learn*, not to do the work for you so you don't learn. Also, sometimes I can make mistakes, so it's always good to double-check important facts with your textbook or teacher.\n\nWhat subject are you working on right now?",
+        "timestamp": "2026-03-10T10:39:13.180Z"
+      }
+    ],
     "createdAt": "2026-03-10T10:19:58.501Z",
-    "updatedAt": "2026-03-10T10:19:58.501Z"
+    "updatedAt": "2026-03-10T10:39:13.180Z"
   }
 ]
