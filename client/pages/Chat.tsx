@@ -42,7 +42,17 @@ interface Agent {
 export default function Chat() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
-  const { sessionId, currentConversationId, setCurrentConversationId, isLoadingSession } = useSession();
+  const { sessionId: contextSessionId, currentConversationId: contextConversationId, setCurrentConversationId: setContextConversationId, isLoadingSession } = useSession();
+
+  // Get sessionId and conversationId from URL params if provided, otherwise use context
+  const urlSessionId = searchParams.get("sessionId");
+  const urlConversationId = searchParams.get("conversationId");
+  const sessionId = urlSessionId || contextSessionId;
+  const currentConversationId = urlConversationId || contextConversationId;
+
+  const setCurrentConversationId = (id: string | null) => {
+    setContextConversationId(id);
+  };
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -66,6 +76,13 @@ export default function Chat() {
     setIsConfigured(!!savedConfig);
   }, []);
 
+  // Update context with URL params if provided
+  useEffect(() => {
+    if (urlConversationId && !contextConversationId) {
+      setContextConversationId(urlConversationId);
+    }
+  }, [urlConversationId, contextConversationId]);
+
   // Load agent if agentId is provided in URL
   useEffect(() => {
     const agentId = searchParams.get("agentId");
@@ -75,16 +92,18 @@ export default function Chat() {
   }, [searchParams]);
 
   // Load conversations when sessionId changes
+  // Skip isLoadingSession check if we have sessionId from URL (it might be initializing)
   useEffect(() => {
-    if (!sessionId || isLoadingSession) return;
+    if (!sessionId) return;
+    if (isLoadingSession && !urlSessionId) return; // Only wait for context if no URL param
     loadConversations();
-  }, [sessionId, isLoadingSession]);
+  }, [sessionId, isLoadingSession, urlSessionId]);
 
   // Load conversation messages when currentConversationId changes
   useEffect(() => {
     if (!currentConversationId || !sessionId) return;
     loadConversationMessages();
-  }, [currentConversationId, sessionId]);
+  }, [currentConversationId, sessionId, urlConversationId]);
 
   const loadConversations = async () => {
     if (!sessionId) return;

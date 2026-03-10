@@ -127,30 +127,46 @@ export default function Agents() {
   const handleChatWithAgent = async (agentId: string) => {
     try {
       // Create a new session if needed
-      const sessionResponse = await fetch("/api/sessions", { method: "POST" });
-      if (!sessionResponse.ok) throw new Error("Failed to create session");
+      const sessionResponse = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!sessionResponse.ok) {
+        const errorData = await sessionResponse.text();
+        throw new Error(`Failed to create session: ${sessionResponse.status} - ${errorData}`);
+      }
       const session = await sessionResponse.json();
+      console.log("Session created:", session.id);
 
       // Create a new conversation with this agent
+      const agentName = agents.find((a) => a.id === agentId)?.name || "Agent";
       const conversationResponse = await fetch(
         `/api/sessions/${session.id}/conversations`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: `Chat with ${agents.find((a) => a.id === agentId)?.name}`,
+            title: `Chat with ${agentName}`,
             agentId,
           }),
         }
       );
-      if (!conversationResponse.ok) throw new Error("Failed to create conversation");
+      if (!conversationResponse.ok) {
+        const errorData = await conversationResponse.text();
+        throw new Error(`Failed to create conversation: ${conversationResponse.status} - ${errorData}`);
+      }
       const conversation = await conversationResponse.json();
+      console.log("Conversation created:", conversation.id);
 
       // Navigate to chat with the conversation ID
-      navigate(`/chat?sessionId=${session.id}&conversationId=${conversation.id}&agentId=${agentId}`);
+      const chatUrl = `/chat?sessionId=${session.id}&conversationId=${conversation.id}&agentId=${agentId}`;
+      console.log("Navigating to:", chatUrl);
+      navigate(chatUrl);
     } catch (error) {
       console.error("Error starting chat:", error);
-      alert("Failed to start chat");
+      const message = error instanceof Error ? error.message : "Unknown error";
+      alert(`Failed to start chat: ${message}`);
     }
   };
 
