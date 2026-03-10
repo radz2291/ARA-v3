@@ -1,17 +1,20 @@
 /**
- * LLM Service - Provider-agnostic abstraction layer
- * Allows for pluggable LLM providers (Claude, GPT-4, Z.ai, etc.)
+ * LLM Service - OpenAI integration with server-side forwarding
+ * Calls /api/llm endpoint which forwards requests to OpenAI
  */
 
 export interface LLMConfig {
-  provider: LLMProvider;
   apiKey: string;
   model: string;
   temperature?: number;
   maxTokens?: number;
 }
 
-export type LLMProvider = "claude" | "gpt4" | "zai" | "ollama";
+export const OPENAI_MODELS = [
+  "gpt-4-turbo",
+  "gpt-4",
+  "gpt-3.5-turbo",
+] as const;
 
 export interface LLMMessage {
   role: "user" | "assistant";
@@ -26,162 +29,23 @@ export interface LLMResponse {
   };
 }
 
+export interface LLMRequestBody {
+  messages: LLMMessage[];
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  apiKey: string;
+}
+
 /**
- * Abstract base class for LLM providers
+ * OpenAI Provider - calls /api/llm server endpoint
  */
-export abstract class BaseLLMProvider {
-  protected config: LLMConfig;
+export class OpenAIProvider {
+  private config: LLMConfig;
 
   constructor(config: LLMConfig) {
     this.config = config;
   }
-
-  abstract generateResponse(
-    messages: LLMMessage[]
-  ): Promise<LLMResponse>;
-
-  abstract validateConfig(): Promise<boolean>;
-}
-
-/**
- * Z.ai Provider Implementation
- */
-export class ZaiProvider extends BaseLLMProvider {
-  private baseUrl = "https://api.z.ai/v1";
-
-  async generateResponse(messages: LLMMessage[]): Promise<LLMResponse> {
-    if (!this.config.apiKey) {
-      throw new Error("Z.ai API key not configured");
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.config.model || "default",
-          messages: messages,
-          temperature: this.config.temperature ?? 0.7,
-          max_tokens: this.config.maxTokens ?? 2000,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(
-          error.error?.message || `Z.ai API error: ${response.status}`
-        );
-      }
-
-      const data = await response.json();
-      return {
-        content: data.choices[0].message.content,
-        tokens: {
-          input: data.usage?.prompt_tokens || 0,
-          output: data.usage?.completion_tokens || 0,
-        },
-      };
-    } catch (error) {
-      console.error("Z.ai API error:", error);
-      throw error;
-    }
-  }
-
-  async validateConfig(): Promise<boolean> {
-    if (!this.config.apiKey) return false;
-
-    try {
-      const response = await fetch(`${this.baseUrl}/models`, {
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
-}
-
-/**
- * Claude Provider Implementation (via Anthropic API)
- */
-export class ClaudeProvider extends BaseLLMProvider {
-  private baseUrl = "https://api.anthropic.com/v1";
-
-  async generateResponse(messages: LLMMessage[]): Promise<LLMResponse> {
-    if (!this.config.apiKey) {
-      throw new Error("Claude API key not configured");
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": this.config.apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: this.config.model || "claude-3-5-sonnet-20241022",
-          max_tokens: this.config.maxTokens ?? 2000,
-          messages: messages,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(
-          error.error?.message || `Claude API error: ${response.status}`
-        );
-      }
-
-      const data = await response.json();
-      return {
-        content: data.content[0].text,
-        tokens: {
-          input: data.usage?.input_tokens || 0,
-          output: data.usage?.output_tokens || 0,
-        },
-      };
-    } catch (error) {
-      console.error("Claude API error:", error);
-      throw error;
-    }
-  }
-
-  async validateConfig(): Promise<boolean> {
-    if (!this.config.apiKey) return false;
-
-    try {
-      const response = await fetch(`${this.baseUrl}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": this.config.apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: this.config.model || "claude-3-5-sonnet-20241022",
-          max_tokens: 100,
-          messages: [{ role: "user", content: "test" }],
-        }),
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
-}
-
-/**
- * GPT-4 Provider Implementation (via OpenAI API)
- */
-export class GPT4Provider extends BaseLLMProvider {
-  private baseUrl = "https://api.openai.com/v1";
 
   async generateResponse(messages: LLMMessage[]): Promise<LLMResponse> {
     if (!this.config.apiKey) {
@@ -189,25 +53,23 @@ export class GPT4Provider extends BaseLLMProvider {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      const response = await fetch("/api/llm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
-          model: this.config.model || "gpt-4-turbo",
           messages: messages,
+          model: this.config.model || "gpt-4-turbo",
           temperature: this.config.temperature ?? 0.7,
           max_tokens: this.config.maxTokens ?? 2000,
-        }),
+          apiKey: this.config.apiKey,
+        } as LLMRequestBody),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(
-          error.error?.message || `OpenAI API error: ${response.status}`
-        );
+        throw new Error(error.message || `LLM API error: ${response.status}`);
       }
 
       const data = await response.json();
@@ -219,7 +81,7 @@ export class GPT4Provider extends BaseLLMProvider {
         },
       };
     } catch (error) {
-      console.error("OpenAI API error:", error);
+      console.error("LLM API error:", error);
       throw error;
     }
   }
@@ -228,10 +90,18 @@ export class GPT4Provider extends BaseLLMProvider {
     if (!this.config.apiKey) return false;
 
     try {
-      const response = await fetch(`${this.baseUrl}/models`, {
+      const response = await fetch("/api/llm", {
+        method: "POST",
         headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          messages: [{ role: "user" as const, content: "test" }],
+          model: this.config.model || "gpt-4-turbo",
+          temperature: 0.7,
+          max_tokens: 100,
+          apiKey: this.config.apiKey,
+        } as LLMRequestBody),
       });
       return response.ok;
     } catch {
@@ -241,19 +111,10 @@ export class GPT4Provider extends BaseLLMProvider {
 }
 
 /**
- * Factory function to create the appropriate provider
+ * Factory function to create OpenAI provider
  */
-export function createLLMProvider(config: LLMConfig): BaseLLMProvider {
-  switch (config.provider) {
-    case "zai":
-      return new ZaiProvider(config);
-    case "claude":
-      return new ClaudeProvider(config);
-    case "gpt4":
-      return new GPT4Provider(config);
-    default:
-      throw new Error(`Unknown LLM provider: ${config.provider}`);
-  }
+export function createLLMProvider(config: LLMConfig): OpenAIProvider {
+  return new OpenAIProvider(config);
 }
 
 /**

@@ -11,34 +11,12 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
-  LLMProvider,
   LLMConfig,
   configStore,
   createLLMProvider,
+  OPENAI_MODELS,
 } from "@/lib/llm-service";
 import { Loader, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
-
-const PROVIDERS: { id: LLMProvider; name: string; models: string[] }[] = [
-  {
-    id: "zai",
-    name: "Z.ai",
-    models: ["default", "gpt-4", "claude-3", "mistral"],
-  },
-  {
-    id: "claude",
-    name: "Claude (Anthropic)",
-    models: [
-      "claude-3-5-sonnet-20241022",
-      "claude-3-opus-20240229",
-      "claude-3-sonnet-20240229",
-    ],
-  },
-  {
-    id: "gpt4",
-    name: "GPT-4 (OpenAI)",
-    models: ["gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"],
-  },
-];
 
 export default function Settings() {
   const { toast } = useToast();
@@ -50,9 +28,8 @@ export default function Settings() {
   >("idle");
 
   const [config, setConfig] = useState<LLMConfig>({
-    provider: "claude",
     apiKey: "",
-    model: "claude-3-5-sonnet-20241022",
+    model: "gpt-4-turbo",
     temperature: 0.7,
     maxTokens: 2000,
   });
@@ -66,19 +43,6 @@ export default function Settings() {
       setValidationStatus("valid");
     }
   }, []);
-
-  const selectedProvider = PROVIDERS.find((p) => p.id === config.provider);
-  const availableModels = selectedProvider?.models || [];
-
-  const handleProviderChange = (provider: LLMProvider) => {
-    const newProvider = PROVIDERS.find((p) => p.id === provider)!;
-    setConfig({
-      ...config,
-      provider,
-      model: newProvider.models[0],
-    });
-    setValidationStatus("idle");
-  };
 
   const handleModelChange = (model: string) => {
     setConfig({ ...config, model });
@@ -119,7 +83,7 @@ export default function Settings() {
         setValidationStatus("valid");
         toast({
           title: "Success",
-          description: `${selectedProvider?.name} connection verified!`,
+          description: "OpenAI connection verified!",
         });
       } else {
         setValidationStatus("invalid");
@@ -184,9 +148,8 @@ export default function Settings() {
     if (window.confirm("Are you sure you want to clear all settings?")) {
       configStore.clear();
       setConfig({
-        provider: "claude",
         apiKey: "",
-        model: "claude-3-5-sonnet-20241022",
+        model: "gpt-4-turbo",
         temperature: 0.7,
         maxTokens: 2000,
       });
@@ -208,7 +171,7 @@ export default function Settings() {
               Settings
             </h1>
             <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
-              Configure your LLM provider and API credentials
+              Configure your OpenAI API and model preferences
             </p>
           </div>
         </div>
@@ -216,55 +179,10 @@ export default function Settings() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-2xl space-y-6">
-            {/* LLM Provider Selection */}
+            {/* OpenAI Configuration */}
             <div className="bg-card dark:bg-card border border-border dark:border-border rounded-lg p-6">
               <h2 className="text-lg font-semibold text-foreground dark:text-foreground mb-4">
-                LLM Provider
-              </h2>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground dark:text-foreground block mb-2">
-                    Select Provider
-                  </label>
-                  <Select value={config.provider} onValueChange={handleProviderChange}>
-                    <SelectTrigger className="w-full bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card dark:bg-card border-border dark:border-border">
-                      {PROVIDERS.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id}>
-                          {provider.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-foreground dark:text-foreground block mb-2">
-                    Model
-                  </label>
-                  <Select value={config.model} onValueChange={handleModelChange}>
-                    <SelectTrigger className="w-full bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card dark:bg-card border-border dark:border-border">
-                      {availableModels.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            {/* API Credentials */}
-            <div className="bg-card dark:bg-card border border-border dark:border-border rounded-lg p-6">
-              <h2 className="text-lg font-semibold text-foreground dark:text-foreground mb-4">
-                API Credentials
+                OpenAI Configuration
               </h2>
 
               <div className="space-y-4">
@@ -277,7 +195,7 @@ export default function Settings() {
                       type={showApiKey ? "text" : "password"}
                       value={config.apiKey}
                       onChange={(e) => handleApiKeyChange(e.target.value)}
-                      placeholder={`Enter your ${selectedProvider?.name} API key`}
+                      placeholder="Enter your OpenAI API key (sk-...)"
                       className="pr-10 bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
                     />
                     <button
@@ -293,7 +211,28 @@ export default function Settings() {
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
-                    Your API key is stored securely and never shared.
+                    Your API key is stored securely in your browser and never shared.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-foreground dark:text-foreground block mb-2">
+                    Model
+                  </label>
+                  <Select value={config.model} onValueChange={handleModelChange}>
+                    <SelectTrigger className="w-full bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card dark:bg-card border-border dark:border-border">
+                      {OPENAI_MODELS.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
+                    Select the model version to use for conversations
                   </p>
                 </div>
               </div>

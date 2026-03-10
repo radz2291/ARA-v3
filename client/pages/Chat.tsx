@@ -42,7 +42,7 @@ export default function Chat() {
         {
           id: "1",
           role: "agent",
-          content: `Hello! I'm using ${savedConfig.provider.toUpperCase()} (${savedConfig.model}). How can I help you today?`,
+          content: `Hello! I'm using OpenAI ${savedConfig.model}. How can I help you today?`,
           timestamp: new Date(Date.now() - 60000),
           agentName: "Agent",
         },
@@ -99,7 +99,7 @@ export default function Chat() {
         role: "agent",
         content: response.content,
         timestamp: new Date(),
-        agentName: config.provider.toUpperCase(),
+        agentName: "OpenAI",
       };
 
       setMessages((prev) => [...prev, agentMessage]);
@@ -163,11 +163,11 @@ export default function Chat() {
                 </Button>
 
                 <div className="text-sm text-muted-foreground dark:text-muted-foreground space-y-2">
-                  <p className="font-medium">Supported Providers:</p>
+                  <p className="font-medium">Available Models:</p>
                   <ul className="space-y-1">
-                    <li>• Z.ai</li>
-                    <li>• Claude (Anthropic)</li>
-                    <li>• GPT-4 (OpenAI)</li>
+                    <li>• gpt-4-turbo</li>
+                    <li>• gpt-4</li>
+                    <li>• gpt-3.5-turbo</li>
                   </ul>
                 </div>
               </div>
@@ -188,7 +188,7 @@ export default function Chat() {
               Chat
             </h1>
             <p className="text-sm text-muted-foreground dark:text-muted-foreground">
-              {config?.provider.toUpperCase()} • {config?.model}
+              OpenAI • {config?.model}
             </p>
           </div>
           <Button
