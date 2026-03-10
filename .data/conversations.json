@@ -37,9 +37,37 @@
         "role": "user",
         "content": "Hey",
         "timestamp": "2026-03-10T10:13:14.534Z"
+      },
+      {
+        "role": "user",
+        "content": "Hey what is 4 + 5",
+        "timestamp": "2026-03-10T10:14:32.328Z"
+      },
+      {
+        "role": "assistant",
+        "content": "4 + 5 is 9.",
+        "timestamp": "2026-03-10T10:14:44.797Z"
+      },
+      {
+        "role": "user",
+        "content": "How sure are you?",
+        "timestamp": "2026-03-10T10:16:40.140Z"
+      },
+      {
+        "role": "assistant",
+        "content": "I am 100% sure. 4 + 5 is definitely 9.",
+        "timestamp": "2026-03-10T10:16:52.831Z"
       }
     ],
     "createdAt": "2026-03-10T10:11:22.412Z",
-    "updatedAt": "2026-03-10T10:13:14.534Z"
+    "updatedAt": "2026-03-10T10:16:52.831Z"
+  },
+  {
+    "id": "70bbab5b-70d5-4583-bb1c-d000f8b34210",
+    "sessionId": "60f07ab7-c578-4db4-aadf-36807798f4ec",
+    "title": "New Conversation",
+    "messages": [],
+    "createdAt": "2026-03-10T10:19:58.501Z",
+    "updatedAt": "2026-03-10T10:19:58.501Z"
   }
 ]
