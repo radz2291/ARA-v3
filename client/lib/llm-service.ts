@@ -1,16 +1,18 @@
 /**
- * LLM Service - OpenAI integration with server-side forwarding
- * Calls /api/llm endpoint which forwards requests to OpenAI
+ * LLM Service - OpenAI-compatible API integration with server-side forwarding
+ * Supports custom providers with auto-discovery of available models
  */
 
 export interface LLMConfig {
   apiKey: string;
+  apiUrl?: string; // Custom provider URL, defaults to OpenAI
   model: string;
   temperature?: number;
   maxTokens?: number;
 }
 
-export const OPENAI_MODELS = [
+// Default OpenAI models - can be overridden by discovered models
+export const DEFAULT_MODELS = [
   "gpt-4-turbo",
   "gpt-4",
   "gpt-3.5-turbo",
@@ -35,10 +37,17 @@ export interface LLMRequestBody {
   temperature: number;
   max_tokens: number;
   apiKey: string;
+  apiUrl?: string;
+}
+
+export interface DiscoveredModel {
+  id: string;
+  name?: string;
+  owned_by?: string;
 }
 
 /**
- * OpenAI Provider - calls /api/llm server endpoint
+ * OpenAI-compatible Provider - calls /api/llm server endpoint
  */
 export class OpenAIProvider {
   private config: LLMConfig;
@@ -49,7 +58,7 @@ export class OpenAIProvider {
 
   async generateResponse(messages: LLMMessage[]): Promise<LLMResponse> {
     if (!this.config.apiKey) {
-      throw new Error("OpenAI API key not configured");
+      throw new Error("API key not configured");
     }
 
     try {
@@ -64,6 +73,7 @@ export class OpenAIProvider {
           temperature: this.config.temperature ?? 0.7,
           max_tokens: this.config.maxTokens ?? 2000,
           apiKey: this.config.apiKey,
+          apiUrl: this.config.apiUrl,
         } as LLMRequestBody),
       });
 
@@ -86,6 +96,36 @@ export class OpenAIProvider {
     }
   }
 
+  async discoverModels(): Promise<DiscoveredModel[]> {
+    if (!this.config.apiKey) {
+      return DEFAULT_MODELS as any;
+    }
+
+    try {
+      const response = await fetch("/api/llm/models", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          apiKey: this.config.apiKey,
+          apiUrl: this.config.apiUrl,
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn("Failed to discover models, using defaults");
+        return DEFAULT_MODELS as any;
+      }
+
+      const data = await response.json();
+      return data.models || DEFAULT_MODELS;
+    } catch (error) {
+      console.warn("Error discovering models:", error);
+      return DEFAULT_MODELS as any;
+    }
+  }
+
   async validateConfig(): Promise<boolean> {
     if (!this.config.apiKey) return false;
 
@@ -101,6 +141,7 @@ export class OpenAIProvider {
           temperature: 0.7,
           max_tokens: 100,
           apiKey: this.config.apiKey,
+          apiUrl: this.config.apiUrl,
         } as LLMRequestBody),
       });
       return response.ok;
@@ -111,7 +152,7 @@ export class OpenAIProvider {
 }
 
 /**
- * Factory function to create OpenAI provider
+ * Factory function to create OpenAI-compatible provider
  */
 export function createLLMProvider(config: LLMConfig): OpenAIProvider {
   return new OpenAIProvider(config);

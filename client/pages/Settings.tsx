@@ -14,7 +14,8 @@ import {
   LLMConfig,
   configStore,
   createLLMProvider,
-  OPENAI_MODELS,
+  DEFAULT_MODELS,
+  DiscoveredModel,
 } from "@/lib/llm-service";
 import { Loader, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
 
@@ -22,13 +23,18 @@ export default function Settings() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isDiscovering, setIsDiscovering] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [validationStatus, setValidationStatus] = useState<
     "idle" | "valid" | "invalid"
   >("idle");
+  const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>(
+    []
+  );
 
   const [config, setConfig] = useState<LLMConfig>({
     apiKey: "",
+    apiUrl: "",
     model: "gpt-4-turbo",
     temperature: 0.7,
     maxTokens: 2000,
@@ -44,6 +50,14 @@ export default function Settings() {
     }
   }, []);
 
+  const availableModels = discoveredModels.length > 0 ? discoveredModels : DEFAULT_MODELS.map((id) => ({ id }));
+
+  const handleApiUrlChange = (apiUrl: string) => {
+    setConfig({ ...config, apiUrl: apiUrl.trim() });
+    setValidationStatus("idle");
+    setDiscoveredModels([]);
+  };
+
   const handleModelChange = (model: string) => {
     setConfig({ ...config, model });
     setValidationStatus("idle");
@@ -52,6 +66,7 @@ export default function Settings() {
   const handleApiKeyChange = (apiKey: string) => {
     setConfig({ ...config, apiKey });
     setValidationStatus("idle");
+    setDiscoveredModels([]);
   };
 
   const handleTemperatureChange = (temp: string) => {
@@ -83,8 +98,11 @@ export default function Settings() {
         setValidationStatus("valid");
         toast({
           title: "Success",
-          description: "OpenAI connection verified!",
+          description: "Connection verified!",
         });
+
+        // Auto-discover models on successful connection
+        await handleDiscoverModels();
       } else {
         setValidationStatus("invalid");
         toast({
@@ -103,6 +121,52 @@ export default function Settings() {
       });
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const handleDiscoverModels = async () => {
+    if (!config.apiKey) {
+      toast({
+        title: "Error",
+        description: "Please enter an API key first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDiscovering(true);
+    try {
+      const provider = createLLMProvider(config);
+      const models = await provider.discoverModels();
+
+      if (models && models.length > 0) {
+        setDiscoveredModels(models);
+        // Set first discovered model as selected if not already set
+        if (!config.model || discoveredModels.length === 0) {
+          setConfig({ ...config, model: models[0].id });
+        }
+        toast({
+          title: "Success",
+          description: `Found ${models.length} available models`,
+        });
+      } else {
+        setDiscoveredModels([]);
+        toast({
+          title: "Info",
+          description: "No chat models found. Using default models.",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error("Model discovery error:", error);
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to discover models",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDiscovering(false);
     }
   };
 
@@ -149,17 +213,23 @@ export default function Settings() {
       configStore.clear();
       setConfig({
         apiKey: "",
+        apiUrl: "",
         model: "gpt-4-turbo",
         temperature: 0.7,
         maxTokens: 2000,
       });
       setValidationStatus("idle");
+      setDiscoveredModels([]);
       toast({
         title: "Cleared",
         description: "All settings have been cleared",
       });
     }
   };
+
+  const providerName = config.apiUrl
+    ? new URL(config.apiUrl).hostname || "Custom Provider"
+    : "OpenAI";
 
   return (
     <Layout>
@@ -171,7 +241,7 @@ export default function Settings() {
               Settings
             </h1>
             <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
-              Configure your OpenAI API and model preferences
+              Configure your OpenAI-compatible API provider
             </p>
           </div>
         </div>
@@ -179,10 +249,10 @@ export default function Settings() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-2xl space-y-6">
-            {/* OpenAI Configuration */}
+            {/* Provider Configuration */}
             <div className="bg-card dark:bg-card border border-border dark:border-border rounded-lg p-6">
               <h2 className="text-lg font-semibold text-foreground dark:text-foreground mb-4">
-                OpenAI Configuration
+                Provider Configuration
               </h2>
 
               <div className="space-y-4">
@@ -195,7 +265,7 @@ export default function Settings() {
                       type={showApiKey ? "text" : "password"}
                       value={config.apiKey}
                       onChange={(e) => handleApiKeyChange(e.target.value)}
-                      placeholder="Enter your OpenAI API key (sk-...)"
+                      placeholder="Enter your API key (sk-...)"
                       className="pr-10 bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
                     />
                     <button
@@ -204,9 +274,9 @@ export default function Settings() {
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
                       {showApiKey ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
                         <Eye className="w-4 h-4" />
+                      ) : (
+                        <EyeOff className="w-4 h-4" />
                       )}
                     </button>
                   </div>
@@ -217,22 +287,66 @@ export default function Settings() {
 
                 <div>
                   <label className="text-sm font-medium text-foreground dark:text-foreground block mb-2">
+                    API Endpoint URL (Optional)
+                  </label>
+                  <Input
+                    type="url"
+                    value={config.apiUrl}
+                    onChange={(e) => handleApiUrlChange(e.target.value)}
+                    placeholder="https://api.openai.com/v1 (or custom provider URL)"
+                    className="bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
+                    Leave empty to use OpenAI. Use custom URL for Ollama, Mistral, or other OpenAI-compatible APIs.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Model Selection */}
+            <div className="bg-card dark:bg-card border border-border dark:border-border rounded-lg p-6">
+              <h2 className="text-lg font-semibold text-foreground dark:text-foreground mb-4">
+                Model Selection
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-foreground dark:text-foreground block mb-2">
                     Model
                   </label>
-                  <Select value={config.model} onValueChange={handleModelChange}>
-                    <SelectTrigger className="w-full bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card dark:bg-card border-border dark:border-border">
-                      {OPENAI_MODELS.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2">
+                    <Select value={config.model} onValueChange={handleModelChange}>
+                      <SelectTrigger className="flex-1 bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card dark:bg-card border-border dark:border-border">
+                        {availableModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={handleDiscoverModels}
+                      disabled={!config.apiKey || isDiscovering}
+                      variant="outline"
+                      className="whitespace-nowrap"
+                    >
+                      {isDiscovering ? (
+                        <>
+                          <Loader className="w-4 h-4 mr-2 animate-spin" />
+                          Discovering...
+                        </>
+                      ) : (
+                        "Discover"
+                      )}
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
-                    Select the model version to use for conversations
+                    {discoveredModels.length > 0
+                      ? `${discoveredModels.length} models available from ${providerName}`
+                      : `Using default models. Click "Discover" to find available models.`}
                   </p>
                 </div>
               </div>

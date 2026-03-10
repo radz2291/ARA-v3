@@ -38,11 +38,14 @@ export default function Chat() {
 
     // Show welcome message if configured
     if (savedConfig) {
+      const providerName = savedConfig.apiUrl
+        ? new URL(savedConfig.apiUrl).hostname || "Custom Provider"
+        : "OpenAI";
       setMessages([
         {
           id: "1",
           role: "agent",
-          content: `Hello! I'm using OpenAI ${savedConfig.model}. How can I help you today?`,
+          content: `Hello! I'm using ${providerName} (${savedConfig.model}). How can I help you today?`,
           timestamp: new Date(Date.now() - 60000),
           agentName: "Agent",
         },
@@ -94,12 +97,15 @@ export default function Chat() {
       const response = await provider.generateResponse(llmMessages);
 
       // Add agent response
+      const providerName = config.apiUrl
+        ? new URL(config.apiUrl).hostname || "Provider"
+        : "OpenAI";
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "agent",
         content: response.content,
         timestamp: new Date(),
-        agentName: "OpenAI",
+        agentName: providerName,
       };
 
       setMessages((prev) => [...prev, agentMessage]);
@@ -163,11 +169,11 @@ export default function Chat() {
                 </Button>
 
                 <div className="text-sm text-muted-foreground dark:text-muted-foreground space-y-2">
-                  <p className="font-medium">Available Models:</p>
+                  <p className="font-medium">Configure in Settings to:</p>
                   <ul className="space-y-1">
-                    <li>• gpt-4-turbo</li>
-                    <li>• gpt-4</li>
-                    <li>• gpt-3.5-turbo</li>
+                    <li>• Set your API key</li>
+                    <li>• Add custom provider URL</li>
+                    <li>• Discover available models</li>
                   </ul>
                 </div>
               </div>
@@ -188,7 +194,10 @@ export default function Chat() {
               Chat
             </h1>
             <p className="text-sm text-muted-foreground dark:text-muted-foreground">
-              OpenAI • {config?.model}
+              {config?.apiUrl
+                ? new URL(config.apiUrl).hostname || "Custom Provider"
+                : "OpenAI"}{" "}
+              • {config?.model}
             </p>
           </div>
           <Button

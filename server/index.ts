@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
-import { handleLLMRequest } from "./routes/llm";
+import { handleLLMRequest, handleModelsDiscovery } from "./routes/llm";
 
 export function createServer() {
   const app = express();
@@ -21,6 +21,7 @@ export function createServer() {
   app.get("/api/demo", handleDemo);
 
   app.post("/api/llm", handleLLMRequest);
+  app.post("/api/llm/models", handleModelsDiscovery);
 
   return app;
 }
