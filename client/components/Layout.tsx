@@ -26,7 +26,7 @@ export const Layout = ({ children }: LayoutProps) => {
         <div className="flex flex-col h-full">
           {/* Logo/Brand */}
           <div className="p-6 border-b border-sidebar-border dark:border-sidebar-border">
-            <Link to="/" className="flex items-center gap-2">
+            <Link to="/chat" className="flex flex-col items-center justify-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-sidebar-primary dark:bg-sidebar-primary flex items-center justify-center">
                 <Bot className="w-5 h-5 text-sidebar-primary-foreground dark:text-sidebar-primary-foreground" />
               </div>
