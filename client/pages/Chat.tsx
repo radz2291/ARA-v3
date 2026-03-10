@@ -250,8 +250,8 @@ export default function Chat() {
         );
       }
 
-      // Call LLM API
-      const provider = createLLMProvider(config);
+      // Call LLM API with sessionId to use server-stored configuration
+      const provider = createLLMProvider(config, sessionId);
       const llmMessages: LLMMessage[] = [
         ...messages.map((m) => ({
           role: m.role,

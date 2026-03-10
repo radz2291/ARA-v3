@@ -17,5 +17,29 @@
     ],
     "createdAt": "2026-03-10T10:04:02.412Z",
     "updatedAt": "2026-03-10T10:05:08.221Z"
+  },
+  {
+    "id": "1051998b-91a3-4efc-b746-a18496adff54",
+    "sessionId": "60f07ab7-c578-4db4-aadf-36807798f4ec",
+    "title": "Hi what is your name?",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi what is your name?",
+        "timestamp": "2026-03-10T10:11:28.496Z"
+      },
+      {
+        "role": "user",
+        "content": "hey",
+        "timestamp": "2026-03-10T10:12:37.088Z"
+      },
+      {
+        "role": "user",
+        "content": "Hey",
+        "timestamp": "2026-03-10T10:13:14.534Z"
+      }
+    ],
+    "createdAt": "2026-03-10T10:11:22.412Z",
+    "updatedAt": "2026-03-10T10:13:14.534Z"
   }
 ]
