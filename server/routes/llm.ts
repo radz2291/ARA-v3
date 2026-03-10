@@ -1,17 +1,20 @@
 import { RequestHandler } from "express";
+import { storage } from "../storage";
 
 interface LLMRequest {
   messages: { role: "user" | "assistant"; content: string }[];
   model: string;
   temperature: number;
   max_tokens: number;
-  apiKey: string;
+  apiKey?: string; // Optional - will use server-stored config if sessionId provided
   apiUrl?: string;
+  sessionId?: string; // Use server-stored config
 }
 
 interface ModelsRequest {
-  apiKey: string;
+  apiKey?: string;
   apiUrl?: string;
+  sessionId?: string;
 }
 
 const DEFAULT_OPENAI_URL = "https://api.openai.com/v1";
@@ -39,24 +42,41 @@ function getChatPath(baseUrl: string): string {
 
 export const handleLLMRequest: RequestHandler = async (req, res) => {
   try {
-    const { messages, model, temperature, max_tokens, apiKey, apiUrl } =
+    const { messages, model, temperature, max_tokens, apiKey, apiUrl, sessionId } =
       req.body as LLMRequest;
 
     // Validate required fields
-    if (!apiKey) {
-      return res.status(400).json({ message: "API key is required" });
-    }
-
     if (!messages || messages.length === 0) {
       return res.status(400).json({ message: "Messages are required" });
     }
 
-    if (!model) {
+    // Get API key and URL from either session config or request body
+    let finalApiKey = apiKey;
+    let finalApiUrl = apiUrl;
+    let finalModel = model;
+
+    if (sessionId) {
+      // Use server-stored config from session
+      const config = storage.sessions.getConfig(sessionId);
+      if (!config) {
+        return res.status(400).json({ message: "No configuration found for session" });
+      }
+      finalApiKey = config.apiKey;
+      finalApiUrl = config.apiUrl;
+      finalModel = config.model;
+    }
+
+    // Validate API key
+    if (!finalApiKey) {
+      return res.status(400).json({ message: "API key is required" });
+    }
+
+    if (!finalModel) {
       return res.status(400).json({ message: "Model is required" });
     }
 
     // Use custom URL or default to OpenAI
-    const baseUrl = apiUrl || DEFAULT_OPENAI_URL;
+    const baseUrl = finalApiUrl || DEFAULT_OPENAI_URL;
     const isZai = isZaiUrl(baseUrl);
 
     // Construct the correct endpoint
@@ -70,14 +90,14 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
     // Prepare request headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      "Authorization": `Bearer ${finalApiKey}`,
     };
 
     console.log(`[LLM] Calling ${endpoint}`);
     console.log(`[LLM] Is Z.ai: ${isZai}`);
-    console.log(`[LLM] Model: ${model}`);
+    console.log(`[LLM] Model: ${finalModel}`);
     console.log(`[LLM] Request body:`, JSON.stringify({
-      model: model,
+      model: finalModel,
       messages: messages,
       temperature: temperature || 0.7,
       max_tokens: max_tokens || 2000,
@@ -88,7 +108,7 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
       method: "POST",
       headers: headers,
       body: JSON.stringify({
-        model: model,
+        model: finalModel,
         messages: messages,
         temperature: temperature || 0.7,
         max_tokens: max_tokens || 2000,
@@ -134,13 +154,27 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
 
 export const handleModelsDiscovery: RequestHandler = async (req, res) => {
   try {
-    const { apiKey, apiUrl } = req.body as ModelsRequest;
+    const { apiKey, apiUrl, sessionId } = req.body as ModelsRequest;
 
-    if (!apiKey) {
+    // Get API key and URL from either session config or request body
+    let finalApiKey = apiKey;
+    let finalApiUrl = apiUrl;
+
+    if (sessionId) {
+      // Use server-stored config from session
+      const config = storage.sessions.getConfig(sessionId);
+      if (!config) {
+        return res.status(400).json({ message: "No configuration found for session" });
+      }
+      finalApiKey = config.apiKey;
+      finalApiUrl = config.apiUrl;
+    }
+
+    if (!finalApiKey) {
       return res.status(400).json({ message: "API key is required" });
     }
 
-    const baseUrl = apiUrl || DEFAULT_OPENAI_URL;
+    const baseUrl = finalApiUrl || DEFAULT_OPENAI_URL;
     const isZai = isZaiUrl(baseUrl);
 
     // Construct the correct endpoint for models
@@ -159,7 +193,7 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
     // Fetch available models from provider
     const modelsResponse = await fetch(modelsEndpoint, {
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${finalApiKey}`,
       },
     });
 

@@ -36,8 +36,9 @@ export interface LLMRequestBody {
   model: string;
   temperature: number;
   max_tokens: number;
-  apiKey: string;
+  apiKey?: string; // Optional - use sessionId for server-side config instead
   apiUrl?: string;
+  sessionId?: string; // Use server-stored config if provided
 }
 
 export interface DiscoveredModel {
@@ -48,33 +49,45 @@ export interface DiscoveredModel {
 
 /**
  * OpenAI-compatible Provider - calls /api/llm server endpoint
+ * Can use either apiKey (from config) or sessionId (server-stored config)
  */
 export class OpenAIProvider {
   private config: LLMConfig;
+  private sessionId?: string;
 
-  constructor(config: LLMConfig) {
+  constructor(config: LLMConfig, sessionId?: string) {
     this.config = config;
+    this.sessionId = sessionId;
   }
 
   async generateResponse(messages: LLMMessage[]): Promise<LLMResponse> {
-    if (!this.config.apiKey) {
+    // Use sessionId if available for server-side config, otherwise use apiKey
+    if (!this.sessionId && !this.config.apiKey) {
       throw new Error("API key not configured");
     }
 
     try {
+      const requestBody: LLMRequestBody = {
+        messages: messages,
+        model: this.config.model || "gpt-4-turbo",
+        temperature: this.config.temperature ?? 0.7,
+        max_tokens: this.config.maxTokens ?? 2000,
+      };
+
+      // Use either sessionId or apiKey
+      if (this.sessionId) {
+        requestBody.sessionId = this.sessionId;
+      } else {
+        requestBody.apiKey = this.config.apiKey;
+        requestBody.apiUrl = this.config.apiUrl;
+      }
+
       const response = await fetch("/api/llm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messages: messages,
-          model: this.config.model || "gpt-4-turbo",
-          temperature: this.config.temperature ?? 0.7,
-          max_tokens: this.config.maxTokens ?? 2000,
-          apiKey: this.config.apiKey,
-          apiUrl: this.config.apiUrl,
-        } as LLMRequestBody),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -97,20 +110,27 @@ export class OpenAIProvider {
   }
 
   async discoverModels(): Promise<DiscoveredModel[]> {
-    if (!this.config.apiKey) {
+    if (!this.sessionId && !this.config.apiKey) {
       return DEFAULT_MODELS as any;
     }
 
     try {
+      const requestBody: any = {};
+
+      // Use either sessionId or apiKey
+      if (this.sessionId) {
+        requestBody.sessionId = this.sessionId;
+      } else {
+        requestBody.apiKey = this.config.apiKey;
+        requestBody.apiUrl = this.config.apiUrl;
+      }
+
       const response = await fetch("/api/llm/models", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          apiKey: this.config.apiKey,
-          apiUrl: this.config.apiUrl,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -127,22 +147,30 @@ export class OpenAIProvider {
   }
 
   async validateConfig(): Promise<boolean> {
-    if (!this.config.apiKey) return false;
+    if (!this.sessionId && !this.config.apiKey) return false;
 
     try {
+      const requestBody: LLMRequestBody = {
+        messages: [{ role: "user" as const, content: "test" }],
+        model: this.config.model || "gpt-4-turbo",
+        temperature: 0.7,
+        max_tokens: 100,
+      };
+
+      // Use either sessionId or apiKey
+      if (this.sessionId) {
+        requestBody.sessionId = this.sessionId;
+      } else {
+        requestBody.apiKey = this.config.apiKey;
+        requestBody.apiUrl = this.config.apiUrl;
+      }
+
       const response = await fetch("/api/llm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messages: [{ role: "user" as const, content: "test" }],
-          model: this.config.model || "gpt-4-turbo",
-          temperature: 0.7,
-          max_tokens: 100,
-          apiKey: this.config.apiKey,
-          apiUrl: this.config.apiUrl,
-        } as LLMRequestBody),
+        body: JSON.stringify(requestBody),
       });
       return response.ok;
     } catch {
@@ -153,9 +181,11 @@ export class OpenAIProvider {
 
 /**
  * Factory function to create OpenAI-compatible provider
+ * @param config - LLM configuration (apiKey, apiUrl, model, etc.)
+ * @param sessionId - Optional session ID for server-stored configuration
  */
-export function createLLMProvider(config: LLMConfig): OpenAIProvider {
-  return new OpenAIProvider(config);
+export function createLLMProvider(config: LLMConfig, sessionId?: string): OpenAIProvider {
+  return new OpenAIProvider(config, sessionId);
 }
 
 /**

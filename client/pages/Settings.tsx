@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useSession } from "@/contexts/SessionContext";
 import {
   LLMConfig,
   configStore,
@@ -21,6 +22,7 @@ import { Loader, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
 
 export default function Settings() {
   const { toast } = useToast();
+  const { sessionId, isLoadingSession } = useSession();
   const [isLoading, setIsLoading] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -42,13 +44,42 @@ export default function Settings() {
 
   // Load saved config on mount
   useEffect(() => {
-    const saved = configStore.load();
-    if (saved) {
-      setConfig(saved);
-      // Check if it was previously validated
-      setValidationStatus("valid");
-    }
-  }, []);
+    if (isLoadingSession) return;
+
+    const loadConfig = async () => {
+      // First try to load from server
+      if (sessionId) {
+        try {
+          const response = await fetch(`/api/sessions/${sessionId}/config`);
+          if (response.ok) {
+            const serverConfig = await response.json();
+            // Server config doesn't have apiKey (security), so we need apiKey from localStorage
+            const localConfig = configStore.load();
+            setConfig({
+              apiKey: localConfig?.apiKey || "",
+              apiUrl: serverConfig.apiUrl || "",
+              model: serverConfig.model || "gpt-4-turbo",
+              temperature: localConfig?.temperature || 0.7,
+              maxTokens: localConfig?.maxTokens || 2000,
+            });
+            setValidationStatus("valid");
+            return;
+          }
+        } catch (error) {
+          console.error("Error loading server config:", error);
+        }
+      }
+
+      // Fallback to localStorage
+      const saved = configStore.load();
+      if (saved) {
+        setConfig(saved);
+        setValidationStatus("valid");
+      }
+    };
+
+    loadConfig();
+  }, [sessionId, isLoadingSession]);
 
   const availableModels = discoveredModels.length > 0 ? discoveredModels : DEFAULT_MODELS.map((id) => ({ id }));
 
@@ -208,7 +239,29 @@ export default function Settings() {
 
     setIsLoading(true);
     try {
+      // Save to server if sessionId is available
+      if (sessionId) {
+        const response = await fetch(`/api/sessions/${sessionId}/config`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            apiKey: config.apiKey,
+            apiUrl: config.apiUrl || undefined,
+            model: config.model,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Failed to save to server");
+        }
+      }
+
+      // Also save locally for other fields (temperature, maxTokens)
       configStore.save(config);
+
       toast({
         title: "Success",
         description: "Configuration saved successfully!",
