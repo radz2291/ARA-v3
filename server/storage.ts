@@ -40,9 +40,20 @@ export interface Session {
 }
 
 export interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
   timestamp: string;
+  name?: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+  executionSteps?: any[];
 }
 
 export interface Conversation {
@@ -263,7 +274,8 @@ class ConversationsStorage {
   addMessage(
     conversationId: string,
     role: "user" | "assistant",
-    content: string
+    content: string,
+    executionSteps?: any[]
   ): Message {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
@@ -274,6 +286,7 @@ class ConversationsStorage {
       role,
       content,
       timestamp: new Date().toISOString(),
+      executionSteps
     };
 
     conversation.messages.push(message);
@@ -766,8 +779,9 @@ export const storage = {
     addMessage: (
       conversationId: string,
       role: "user" | "assistant",
-      content: string
-    ) => getConversationsStorage().addMessage(conversationId, role, content),
+      content: string,
+      executionSteps?: any[]
+    ) => getConversationsStorage().addMessage(conversationId, role, content, executionSteps),
     updateTitle: (conversationId: string, title: string) =>
       getConversationsStorage().updateTitle(conversationId, title),
     delete: (conversationId: string) =>

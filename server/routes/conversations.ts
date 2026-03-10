@@ -132,7 +132,7 @@ export const handleGetConversation: RequestHandler = (req, res) => {
 export const handleAddMessage: RequestHandler = (req, res) => {
   try {
     const { sessionId, conversationId } = req.params;
-    const { role, content } = req.body;
+    const { role, content, executionSteps } = req.body;
 
     // Validate required fields
     if (!role || !content) {
@@ -161,12 +161,13 @@ export const handleAddMessage: RequestHandler = (req, res) => {
     }
 
     // Add message
-    const message = storage.conversations.addMessage(conversationId, role, content);
+    const message = storage.conversations.addMessage(conversationId, role, content, executionSteps);
 
     return res.json({
       role: message.role,
       content: message.content,
       timestamp: message.timestamp,
+      executionSteps: message.executionSteps
     });
   } catch (error) {
     console.error("Error adding message:", error);

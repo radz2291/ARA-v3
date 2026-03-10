@@ -235,7 +235,13 @@ async function executeTool(
         output = await executeCode(input, context);
         break;
       case "custom":
-        throw new Error("Custom tool execution not yet implemented");
+        if (tool.name === "get_weather") {
+          const { location } = input as { location: string };
+          output = `The current weather in ${location || "Unknown"} is 22°C and Partly Cloudy with 45% humidity.`;
+        } else {
+          throw new Error(`Custom execution for ${tool.name} not implemented`);
+        }
+        break;
       default:
         throw new Error(`Unknown tool type: ${tool.type}`);
     }
@@ -410,6 +416,65 @@ export function initializeEssentialTools(): void {
           output: { type: "string" },
           executionTime: { type: "number" },
           status: { type: "string" },
+        },
+      }
+    );
+  }
+
+  // Delegate Task Tool (for Multi-Agent Orchestration)
+  const delegateTaskExists = existingTools.some((t) => t.name === "Delegate Task");
+  if (!delegateTaskExists) {
+    storage.tools.create(
+      "Delegate Task",
+      "Delegate a task to another agent. Use this to collaborate with specialists.",
+      "custom",
+      {
+        type: "object",
+        properties: {
+          agentId: {
+            type: "string",
+            description: "ID of the agent to delegate to",
+          },
+          task: {
+            type: "string",
+            description: "The specific task or prompt for the delegated agent",
+          },
+        },
+        required: ["agentId", "task"],
+      },
+      {
+        type: "object",
+        properties: {
+          response: { type: "string" },
+          success: { type: "boolean" },
+        },
+      }
+    );
+  }
+
+  // Weather Tool (For Verification)
+  const weatherToolExists = existingTools.some((t) => t.name === "get_weather");
+  if (!weatherToolExists) {
+    storage.tools.create(
+      "get_weather",
+      "Get the current weather in a given location",
+      "custom", // Use custom type to implement dedicated mock logic
+      {
+        type: "object",
+        properties: {
+          location: {
+            type: "string",
+            description: "The city and state, e.g. San Francisco, CA",
+          },
+        },
+        required: ["location"],
+      },
+      {
+        type: "object",
+        properties: {
+          location: { type: "string" },
+          temperature: { type: "string" },
+          condition: { type: "string" },
         },
       }
     );

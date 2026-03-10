@@ -19,9 +19,18 @@ export const DEFAULT_MODELS = [
 ] as const;
 
 export interface LLMMessage {
-  role: "user" | "assistant" | "system" | "function";
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
-  name?: string; // For function messages
+  name?: string; // For function/tool messages
+  tool_call_id?: string; // ID of the tool call this message is responding to
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
 }
 
 export interface ToolFunction {

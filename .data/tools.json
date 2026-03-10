@@ -1,6 +1,6 @@
 [
   {
-    "id": "ad0e8a3c-58d7-4e71-bae6-2898c727cbd8",
+    "id": "05af92c5-1526-4128-911c-3d865602a5a7",
     "name": "Web Search",
     "description": "Search the web for information",
     "type": "web_search",
@@ -52,11 +52,11 @@
     },
     "assignedAgentIds": [],
     "status": "active",
-    "createdAt": "2026-03-10T14:14:48.096Z",
-    "updatedAt": "2026-03-10T14:14:48.096Z"
+    "createdAt": "2026-03-10T14:58:06.457Z",
+    "updatedAt": "2026-03-10T14:58:06.458Z"
   },
   {
-    "id": "cc5d2e25-1378-4067-830a-02992618fc55",
+    "id": "a38aac03-0df0-4a64-a255-2cc117f8fb46",
     "name": "File Operations",
     "description": "Read, write, and manage files in the workspace",
     "type": "file_ops",
@@ -109,11 +109,11 @@
     },
     "assignedAgentIds": [],
     "status": "active",
-    "createdAt": "2026-03-10T14:14:48.097Z",
-    "updatedAt": "2026-03-10T14:14:48.097Z"
+    "createdAt": "2026-03-10T14:58:06.459Z",
+    "updatedAt": "2026-03-10T14:58:06.459Z"
   },
   {
-    "id": "e8e298ac-f89c-437c-baa9-b95e22240693",
+    "id": "c13a909f-38ae-4e3c-bd30-944c6e3a80d6",
     "name": "Code Execution",
     "description": "Execute code in a sandboxed environment",
     "type": "code_exec",
@@ -159,7 +159,81 @@
     },
     "assignedAgentIds": [],
     "status": "active",
-    "createdAt": "2026-03-10T14:14:48.097Z",
-    "updatedAt": "2026-03-10T14:14:48.097Z"
+    "createdAt": "2026-03-10T14:58:06.459Z",
+    "updatedAt": "2026-03-10T14:58:06.459Z"
+  },
+  {
+    "id": "dd3974b1-98d8-4b8c-9359-c5824502c237",
+    "name": "Delegate Task",
+    "description": "Delegate a task to another agent. Use this to collaborate with specialists.",
+    "type": "custom",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "description": "ID of the agent to delegate to"
+        },
+        "task": {
+          "type": "string",
+          "description": "The specific task or prompt for the delegated agent"
+        }
+      },
+      "required": [
+        "agentId",
+        "task"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "response": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        }
+      }
+    },
+    "assignedAgentIds": [],
+    "status": "active",
+    "createdAt": "2026-03-10T16:03:36.537Z",
+    "updatedAt": "2026-03-10T16:03:36.538Z"
+  },
+  {
+    "id": "85345640-113a-467e-9008-dc11b0d19632",
+    "name": "get_weather",
+    "description": "Get the current weather in a given location",
+    "type": "web_search",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "The city and state, e.g. San Francisco, CA"
+        }
+      },
+      "required": [
+        "location"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "string"
+        },
+        "temperature": {
+          "type": "string"
+        },
+        "condition": {
+          "type": "string"
+        }
+      }
+    },
+    "assignedAgentIds": [],
+    "status": "active",
+    "createdAt": "2026-03-10T16:06:43.197Z",
+    "updatedAt": "2026-03-10T16:06:43.198Z"
   }
 ]

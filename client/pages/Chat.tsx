@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Plus, AlertCircle, Trash2, Edit2, Check, X, Users } from "lucide-react";
+import { Send, Plus, AlertCircle, Trash2, Edit2, Check, X, Users, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/Layout";
@@ -13,12 +13,14 @@ import {
 } from "@/lib/llm-service";
 import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/contexts/SessionContext";
+import { ToolExecutionSteps, ExecutionStep } from "@/components/ToolExecutionSteps";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  executionSteps?: ExecutionStep[];
 }
 
 // interface Conversation moved to SessionContext
@@ -256,6 +258,7 @@ export default function Chat() {
         role: "assistant",
         content: response.content,
         timestamp: new Date().toISOString(),
+        executionSteps: (response as any).executionSteps, // Cast to any to access the new field
       };
       setMessages((prev) => [...prev, assistantMessage]);
 
@@ -279,6 +282,7 @@ export default function Chat() {
           body: JSON.stringify({
             role: "assistant",
             content: response.content,
+            executionSteps: (response as any).executionSteps,
           }),
         }
       ).catch((error) => {
@@ -379,8 +383,8 @@ export default function Chat() {
                       {workspace
                         ? workspace.name
                         : agent
-                        ? `Chat with ${agent.name}`
-                        : currentConversation?.title || "Chat"}
+                          ? `Chat with ${agent.name}`
+                          : currentConversation?.title || "Chat"}
                     </h1>
                     <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                       {workspace ? (
@@ -474,6 +478,9 @@ export default function Chat() {
                     )}
                   >
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.executionSteps && message.executionSteps.length > 0 && (
+                      <ToolExecutionSteps steps={message.executionSteps} />
+                    )}
                     <p className="text-xs opacity-50 mt-2">
                       {new Date(message.timestamp).toLocaleTimeString([], {
                         hour: "2-digit",
