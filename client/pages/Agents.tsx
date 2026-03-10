@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AgentForm, AgentFormData } from "@/components/AgentForm";
+import { useSession } from "@/contexts/SessionContext";
 
 interface Agent {
   id: string;
@@ -43,6 +44,7 @@ export default function Agents() {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [agentToDelete, setAgentToDelete] = useState<Agent | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const { createNewConversation } = useSession();
 
   // Load agents
   useEffect(() => {
@@ -126,36 +128,12 @@ export default function Agents() {
 
   const handleChatWithAgent = async (agentId: string) => {
     try {
-      // Get the current session (create if doesn't exist)
-      const currentSessionId = localStorage.getItem("sessionId");
-      if (!currentSessionId) {
-        throw new Error("No active session found");
-      }
-
-      // Create a new conversation with this agent in the current session
       const agentName = agents.find((a) => a.id === agentId)?.name || "Agent";
-      const conversationResponse = await fetch(
-        `/api/sessions/${currentSessionId}/conversations`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: `Chat with ${agentName}`,
-            agentId,
-          }),
-        }
-      );
-      if (!conversationResponse.ok) {
-        const errorData = await conversationResponse.text();
-        throw new Error(`Failed to create conversation: ${conversationResponse.status} - ${errorData}`);
-      }
-      const conversation = await conversationResponse.json();
-      console.log("Conversation created:", conversation.id);
+      const conversation = await createNewConversation(agentId, `Chat with ${agentName}`);
 
-      // Navigate to chat with the conversation ID
-      const chatUrl = `/chat?conversationId=${conversation.id}&agentId=${agentId}`;
-      console.log("Navigating to:", chatUrl);
-      navigate(chatUrl);
+      if (conversation) {
+        navigate(`/chat?conversationId=${conversation.id}&agentId=${agentId}`);
+      }
     } catch (error) {
       console.error("Error starting chat:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -218,11 +196,10 @@ export default function Agents() {
                           {agent.name}
                         </h2>
                         <span
-                          className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            agent.status === "active"
+                          className={`text-xs px-2 py-1 rounded-full font-medium ${agent.status === "active"
                               ? "bg-green-500/10 text-green-700 dark:text-green-400"
                               : "bg-gray-500/10 text-gray-700 dark:text-gray-400"
-                          }`}
+                            }`}
                         >
                           {agent.status === "active" ? "Active" : "Inactive"}
                         </span>

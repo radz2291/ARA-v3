@@ -21,14 +21,7 @@ interface Message {
   timestamp: string;
 }
 
-interface Conversation {
-  id: string;
-  agentId?: string;
-  title: string;
-  messageCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
+// interface Conversation moved to SessionContext
 
 interface Agent {
   id: string;
@@ -42,7 +35,15 @@ interface Agent {
 export default function Chat() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
-  const { sessionId: contextSessionId, currentConversationId: contextConversationId, setCurrentConversationId: setContextConversationId, isLoadingSession } = useSession();
+  const {
+    sessionId: contextSessionId,
+    currentConversationId: contextConversationId,
+    setCurrentConversationId: setContextConversationId,
+    isLoadingSession,
+    conversations,
+    isLoadingConversations,
+    renameConversation
+  } = useSession();
 
   // Get sessionId and conversationId from URL params if provided, otherwise use context
   const urlSessionId = searchParams.get("sessionId");
@@ -54,7 +55,6 @@ export default function Chat() {
     setContextConversationId(id);
   };
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -62,9 +62,6 @@ export default function Chat() {
   const [config, setConfig] = useState<LLMConfig | null>(null);
   const [isConfigured, setIsConfigured] = useState(false);
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
-  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
-  const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
   const [agent, setAgent] = useState<Agent | null>(null);
   const [isLoadingAgent, setIsLoadingAgent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -91,40 +88,6 @@ export default function Chat() {
     }
   }, [searchParams]);
 
-  // Load conversations when sessionId changes
-  // Skip isLoadingSession check if we have sessionId from URL (it might be initializing)
-  useEffect(() => {
-    if (!sessionId) return;
-    if (isLoadingSession && !urlSessionId) return; // Only wait for context if no URL param
-    loadConversations();
-  }, [sessionId, isLoadingSession, urlSessionId]);
-
-  // Load conversation messages when currentConversationId changes
-  useEffect(() => {
-    if (!currentConversationId || !sessionId) return;
-    loadConversationMessages();
-  }, [currentConversationId, sessionId, urlConversationId]);
-
-  const loadConversations = async () => {
-    if (!sessionId) return;
-    setIsLoadingConversations(true);
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}/conversations`);
-      if (response.ok) {
-        const data = await response.json();
-        setConversations(data.conversations || []);
-
-        // If no conversation is selected, select the first one
-        if (!currentConversationId && data.conversations.length > 0) {
-          setCurrentConversationId(data.conversations[0].id);
-        }
-      }
-    } catch (error) {
-      console.error("Error loading conversations:", error);
-    } finally {
-      setIsLoadingConversations(false);
-    }
-  };
 
   const loadAgent = async (agentId: string) => {
     try {
@@ -164,98 +127,12 @@ export default function Chat() {
     }
   };
 
-  const createNewConversation = async () => {
-    if (!sessionId) return;
+  // Load conversation messages when currentConversationId changes
+  useEffect(() => {
+    if (!currentConversationId || !sessionId) return;
+    loadConversationMessages();
+  }, [currentConversationId, sessionId]);
 
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}/conversations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "New Conversation" }),
-      });
-
-      if (response.ok) {
-        const newConversation = await response.json();
-        setConversations((prev) => [newConversation, ...prev]);
-        setCurrentConversationId(newConversation.id);
-        setMessages([]);
-        toast({
-          title: "Success",
-          description: "New conversation created",
-        });
-      }
-    } catch (error) {
-      console.error("Error creating conversation:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create conversation",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const renameConversation = async (conversationId: string, newTitle: string) => {
-    if (!sessionId) return;
-
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/conversations/${conversationId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: newTitle }),
-        }
-      );
-
-      if (response.ok) {
-        setConversations((prev) =>
-          prev.map((c) => (c.id === conversationId ? { ...c, title: newTitle } : c))
-        );
-        toast({
-          title: "Success",
-          description: "Conversation renamed",
-        });
-      }
-    } catch (error) {
-      console.error("Error renaming conversation:", error);
-      toast({
-        title: "Error",
-        description: "Failed to rename conversation",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const deleteConversation = async (conversationId: string) => {
-    if (!sessionId) return;
-
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/conversations/${conversationId}`,
-        { method: "DELETE" }
-      );
-
-      if (response.ok) {
-        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
-        if (currentConversationId === conversationId) {
-          const remaining = conversations.filter((c) => c.id !== conversationId);
-          setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
-          setMessages([]);
-        }
-        toast({
-          title: "Success",
-          description: "Conversation deleted",
-        });
-      }
-    } catch (error) {
-      console.error("Error deleting conversation:", error);
-      toast({
-        title: "Error",
-        description: "Failed to delete conversation",
-        variant: "destructive",
-      });
-    }
-  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -444,122 +321,6 @@ export default function Chat() {
   return (
     <Layout>
       <div className="flex h-full bg-background dark:bg-background">
-        {/* Sidebar */}
-        <div className="w-64 border-r border-border dark:border-border flex flex-col bg-card dark:bg-card">
-          {/* New Conversation Button */}
-          <div className="p-4 border-b border-border dark:border-border">
-            <Button
-              onClick={createNewConversation}
-              className="w-full gap-2 bg-primary dark:bg-primary hover:opacity-90 text-primary-foreground dark:text-primary-foreground"
-            >
-              <Plus className="w-4 h-4" />
-              New Chat
-            </Button>
-          </div>
-
-          {/* Conversations List */}
-          <div className="flex-1 overflow-y-auto">
-            {isLoadingConversations ? (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                Loading conversations...
-              </div>
-            ) : conversations.length === 0 ? (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                No conversations yet. Start a new one!
-              </div>
-            ) : (
-              <div className="space-y-1 p-2">
-                {conversations.map((conversation) => (
-                  <div
-                    key={conversation.id}
-                    className={cn(
-                      "group relative rounded-lg p-3 cursor-pointer transition-colors",
-                      currentConversationId === conversation.id
-                        ? "bg-primary/10 text-primary dark:bg-primary/10"
-                        : "hover:bg-secondary dark:hover:bg-secondary text-foreground dark:text-foreground"
-                    )}
-                    onClick={() => setCurrentConversationId(conversation.id)}
-                  >
-                    <div className="pr-8">
-                      {editingConversationId === conversation.id ? (
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={editingTitle}
-                            onChange={(e) => setEditingTitle(e.target.value)}
-                            className="flex-1 text-sm bg-background dark:bg-background border border-border dark:border-border rounded px-2 py-1"
-                            autoFocus
-                          />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              renameConversation(conversation.id, editingTitle);
-                              setEditingConversationId(null);
-                            }}
-                            className="p-1 hover:bg-primary/20 rounded"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingConversationId(null);
-                            }}
-                            className="p-1 hover:bg-secondary rounded"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-sm font-medium truncate">
-                            {conversation.title}
-                          </p>
-                          <p className="text-xs opacity-50">
-                            {conversation.messageCount} messages
-                          </p>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Action Buttons */}
-                    {editingConversationId !== conversation.id && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingConversationId(conversation.id);
-                            setEditingTitle(conversation.title);
-                          }}
-                          className="p-1 hover:bg-primary/20 rounded"
-                          title="Rename"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (
-                              window.confirm(
-                                "Are you sure you want to delete this conversation?"
-                              )
-                            ) {
-                              deleteConversation(conversation.id);
-                            }
-                          }}
-                          className="p-1 hover:bg-destructive/20 rounded text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">

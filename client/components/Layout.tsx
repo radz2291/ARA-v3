@@ -3,6 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Plus, Settings, MessageSquare, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/contexts/SessionContext";
+import { Edit2, Trash2, Check } from "lucide-react";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,8 +13,29 @@ interface LayoutProps {
 export const Layout = ({ children }: LayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
+  const {
+    conversations,
+    currentConversationId,
+    setCurrentConversationId,
+    createNewConversation,
+    deleteConversation,
+    renameConversation
+  } = useSession();
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleNewChat = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const newConv = await createNewConversation();
+    if (newConv) {
+      if (location.pathname !== "/chat") {
+        window.location.href = "/chat";
+      }
+    }
+  };
 
   return (
     <div className="flex h-screen bg-background dark:bg-background">
@@ -40,13 +63,11 @@ export const Layout = ({ children }: LayoutProps) => {
           <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
             <div className="mb-4">
               <Button
-                asChild
-                className="w-full bg-sidebar-primary dark:bg-sidebar-primary text-sidebar-primary-foreground dark:text-sidebar-primary-foreground hover:opacity-90"
+                onClick={handleNewChat}
+                className="w-full bg-sidebar-primary dark:bg-sidebar-primary text-sidebar-primary-foreground dark:text-sidebar-primary-foreground hover:opacity-90 flex items-center gap-2 justify-center"
               >
-                <Link to="/chat" className="flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  New Chat
-                </Link>
+                <Plus className="w-4 h-4" />
+                New Chat
               </Button>
             </div>
 
@@ -85,10 +106,100 @@ export const Layout = ({ children }: LayoutProps) => {
                 Recent Chats
               </h3>
               <div className="space-y-1">
-                {/* Placeholder for chat history */}
-                <div className="text-xs text-sidebar-foreground dark:text-sidebar-foreground opacity-50 px-4 py-2">
-                  No recent chats
-                </div>
+                {conversations.length === 0 ? (
+                  <div className="text-xs text-sidebar-foreground dark:text-sidebar-foreground opacity-50 px-4 py-2">
+                    No recent chats
+                  </div>
+                ) : (
+                  conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={cn(
+                        "group relative flex items-center justify-between px-4 py-2 rounded-lg cursor-pointer transition-colors",
+                        currentConversationId === conv.id
+                          ? "bg-sidebar-accent dark:bg-sidebar-accent text-sidebar-accent-foreground dark:text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground dark:text-sidebar-foreground hover:bg-sidebar-accent/50 dark:hover:bg-sidebar-accent/50"
+                      )}
+                      onClick={() => {
+                        setCurrentConversationId(conv.id);
+                        if (location.pathname !== "/chat") {
+                          window.location.href = "/chat";
+                        }
+                        if (window.innerWidth < 768) setSidebarOpen(false);
+                      }}
+                    >
+                      {editingId === conv.id ? (
+                        <div className="flex gap-2 w-full pr-6">
+                          <input
+                            type="text"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                renameConversation(conv.id, editingTitle);
+                                setEditingId(null);
+                              } else if (e.key === "Escape") {
+                                setEditingId(null);
+                              }
+                            }}
+                            className="flex-1 text-sm bg-background dark:bg-background border border-border rounded px-2 py-1 text-foreground"
+                            autoFocus
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              renameConversation(conv.id, editingTitle);
+                              setEditingId(null);
+                            }}
+                            className="p-1 hover:bg-primary/20 rounded text-foreground"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingId(null);
+                            }}
+                            className="p-1 hover:bg-secondary rounded text-foreground"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-sm truncate pr-8">{conv.title}</span>
+                      )}
+
+                      {editingId !== conv.id && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingId(conv.id);
+                              setEditingTitle(conv.title);
+                            }}
+                            className="p-1 hover:bg-sidebar-accent/80 rounded"
+                            title="Rename"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm("Delete this conversation?")) {
+                                deleteConversation(conv.id);
+                              }
+                            }}
+                            className="p-1 hover:bg-destructive/20 rounded text-destructive"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </nav>

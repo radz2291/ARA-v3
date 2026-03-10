@@ -6,12 +6,27 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 
+export interface Conversation {
+  id: string;
+  agentId?: string;
+  title: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface SessionContextType {
   sessionId: string | null;
   currentConversationId: string | null;
   setCurrentConversationId: (id: string | null) => void;
   isLoadingSession: boolean;
   initializeSession: (id?: string) => Promise<void>;
+  conversations: Conversation[];
+  isLoadingConversations: boolean;
+  loadConversations: () => Promise<void>;
+  createNewConversation: (agentId?: string, title?: string) => Promise<Conversation | null>;
+  renameConversation: (conversationId: string, newTitle: string) => Promise<void>;
+  deleteConversation: (conversationId: string) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -24,6 +39,8 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     string | null
   >(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
 
   /**
    * Initialize or restore session
@@ -63,16 +80,8 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.setItem("sessionId", newSessionId);
       setSessionId(newSessionId);
 
-      // Load first conversation if available
-      const conversationsResponse = await fetch(
-        `/api/sessions/${newSessionId}/conversations`
-      );
-      if (conversationsResponse.ok) {
-        const convData = await conversationsResponse.json();
-        if (convData.conversations.length > 0) {
-          setCurrentConversationId(convData.conversations[0].id);
-        }
-      }
+      // Load conversations automatically
+      await loadConversationsFromId(newSessionId);
     } catch (error) {
       console.error("Failed to initialize session:", error);
       // Create new session on error
@@ -100,12 +109,118 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     initializeSession();
   }, []);
 
+  const loadConversationsFromId = async (id: string) => {
+    setIsLoadingConversations(true);
+    try {
+      const response = await fetch(`/api/sessions/${id}/conversations`);
+      if (response.ok) {
+        const data = await response.json();
+        setConversations(data.conversations || []);
+        if (!currentConversationId && data.conversations.length > 0) {
+          setCurrentConversationId(data.conversations[0].id);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading conversations:", error);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  const loadConversations = async () => {
+    if (sessionId) {
+      await loadConversationsFromId(sessionId);
+    }
+  };
+
+  const createNewConversation = async (agentId?: string, title: string = "New Conversation"): Promise<Conversation | null> => {
+    if (!sessionId) return null;
+    try {
+      const payload: any = { title };
+      if (agentId) payload.agentId = agentId;
+
+      const response = await fetch(`/api/sessions/${sessionId}/conversations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const newConversation = await response.json();
+        setConversations((prev) => [newConversation, ...prev]);
+        setCurrentConversationId(newConversation.id);
+        return newConversation;
+      }
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+    }
+    return null;
+  };
+
+  const renameConversation = async (conversationId: string, newTitle: string) => {
+    if (!sessionId) return;
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/conversations/${conversationId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: newTitle }),
+        }
+      );
+
+      if (response.ok) {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === conversationId ? { ...c, title: newTitle } : c))
+        );
+      }
+    } catch (error) {
+      console.error("Error renaming conversation:", error);
+    }
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    if (!sessionId) return;
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/conversations/${conversationId}`,
+        { method: "DELETE" }
+      );
+
+      if (response.ok) {
+        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+        if (currentConversationId === conversationId) {
+          setConversations((prev) => {
+            const remaining = prev.filter((c) => c.id !== conversationId);
+            setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
+            return remaining;
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+    }
+  };
+
+  // Re-fetch conversations if sessionId changes directly (just in case)
+  useEffect(() => {
+    if (sessionId) {
+      loadConversations();
+    }
+  }, [sessionId]);
+
   const value: SessionContextType = {
     sessionId,
     currentConversationId,
     setCurrentConversationId,
     isLoadingSession,
     initializeSession,
+    conversations,
+    isLoadingConversations,
+    loadConversations,
+    createNewConversation,
+    renameConversation,
+    deleteConversation,
   };
 
   return (
