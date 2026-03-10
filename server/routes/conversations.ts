@@ -27,13 +27,8 @@ export const handleCreateConversation: RequestHandler = (req, res) => {
       return res.status(404).json({ message: "Session not found" });
     }
 
-    // Create conversation
-    const conversation = storage.conversations.create(sessionId, title);
-
-    // If agentId is provided, update the conversation with it
-    if (agentId) {
-      conversation.agentId = agentId;
-    }
+    // Create conversation with optional agentId
+    const conversation = storage.conversations.create(sessionId, title, agentId);
 
     return res.json({
       id: conversation.id,

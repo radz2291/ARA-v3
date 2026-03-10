@@ -203,10 +203,11 @@ class ConversationsStorage {
     }, 50);
   }
 
-  create(sessionId: string, title: string): Conversation {
+  create(sessionId: string, title: string, agentId?: string): Conversation {
     const conversation: Conversation = {
       id: randomUUID(),
       sessionId,
+      agentId,
       title,
       messages: [],
       createdAt: new Date().toISOString(),
@@ -423,8 +424,8 @@ export const storage = {
     delete: (sessionId: string) => getSessionsStorage().delete(sessionId),
   },
   conversations: {
-    create: (sessionId: string, title: string) =>
-      getConversationsStorage().create(sessionId, title),
+    create: (sessionId: string, title: string, agentId?: string) =>
+      getConversationsStorage().create(sessionId, title, agentId),
     get: (conversationId: string) =>
       getConversationsStorage().get(conversationId),
     listBySession: (sessionId: string) =>
