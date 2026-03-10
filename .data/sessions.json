@@ -1,0 +1,11 @@
+[
+  {
+    "id": "60f07ab7-c578-4db4-aadf-36807798f4ec",
+    "createdAt": "2026-03-10T10:02:26.566Z",
+    "config": {
+      "apiKey": "1e4ce880f4124a7e8a6c590602cd3f6c.7sCkwUKQZ89JLIiz",
+      "apiUrl": "https://api.z.ai/api/coding/paas/v4",
+      "model": "glm-4.7"
+    }
+  }
+]

@@ -189,18 +189,27 @@ export function createLLMProvider(config: LLMConfig, sessionId?: string): OpenAI
 }
 
 /**
- * Configuration storage (in-memory with localStorage persistence)
+ * Configuration storage
+ * For security: API keys are NEVER stored in localStorage
+ * They are stored server-side only and accessed via sessionId
  */
 class LLMConfigStore {
   private config: LLMConfig | null = null;
 
+  // Load non-sensitive config from localStorage (temperature, maxTokens only)
   load(): LLMConfig | null {
-    // Try to load from localStorage
-    const stored = localStorage.getItem("llm_config");
+    // Try to load from localStorage - only safe fields
+    const stored = localStorage.getItem("llm_config_safe");
     if (stored) {
       try {
-        this.config = JSON.parse(stored);
-        return this.config;
+        const safeConfig = JSON.parse(stored);
+        // Return with empty apiKey - never from localStorage
+        return {
+          apiKey: "",
+          apiUrl: "",
+          model: "gpt-4-turbo",
+          ...safeConfig,
+        };
       } catch {
         return null;
       }
@@ -208,12 +217,16 @@ class LLMConfigStore {
     return null;
   }
 
+  // Save only safe fields (temperature, maxTokens) to localStorage
   save(config: LLMConfig): void {
-    // Never store API keys in localStorage in production
-    // This is for demo purposes only - use secure storage/environment variables
-    const safeConfig = { ...config, apiKey: "***REDACTED***" };
-    localStorage.setItem("llm_config", JSON.stringify(safeConfig));
-    this.config = config;
+    // NEVER save API keys - only safe fields
+    const safeConfig = {
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+    };
+    localStorage.setItem("llm_config_safe", JSON.stringify(safeConfig));
+    // In-memory config is never used for API calls anymore
+    this.config = null;
   }
 
   getCurrent(): LLMConfig | null {
@@ -221,7 +234,7 @@ class LLMConfigStore {
   }
 
   clear(): void {
-    localStorage.removeItem("llm_config");
+    localStorage.removeItem("llm_config_safe");
     this.config = null;
   }
 }

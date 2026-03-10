@@ -41,28 +41,30 @@ export default function Settings() {
     temperature: 0.7,
     maxTokens: 2000,
   });
+  const [isSavedOnServer, setIsSavedOnServer] = useState(false);
 
   // Load saved config on mount
   useEffect(() => {
     if (isLoadingSession) return;
 
     const loadConfig = async () => {
-      // First try to load from server
+      // Try to load from server
       if (sessionId) {
         try {
           const response = await fetch(`/api/sessions/${sessionId}/config`);
           if (response.ok) {
             const serverConfig = await response.json();
-            // Server config doesn't have apiKey (security), so we need apiKey from localStorage
+            // Load safe fields from localStorage (temperature, maxTokens)
             const localConfig = configStore.load();
             setConfig({
-              apiKey: localConfig?.apiKey || "",
+              apiKey: "", // Never load apiKey - must be re-entered
               apiUrl: serverConfig.apiUrl || "",
               model: serverConfig.model || "gpt-4-turbo",
               temperature: localConfig?.temperature || 0.7,
               maxTokens: localConfig?.maxTokens || 2000,
             });
-            setValidationStatus("valid");
+            setIsSavedOnServer(true);
+            setValidationStatus("valid"); // Server has valid config
             return;
           }
         } catch (error) {
@@ -70,11 +72,16 @@ export default function Settings() {
         }
       }
 
-      // Fallback to localStorage
+      // Load safe fields from localStorage
       const saved = configStore.load();
       if (saved) {
-        setConfig(saved);
-        setValidationStatus("valid");
+        setConfig({
+          apiKey: "",
+          apiUrl: saved.apiUrl || "",
+          model: saved.model || "gpt-4-turbo",
+          temperature: saved.temperature || 0.7,
+          maxTokens: saved.maxTokens || 2000,
+        });
       }
     };
 
@@ -96,8 +103,13 @@ export default function Settings() {
 
   const handleApiKeyChange = (apiKey: string) => {
     setConfig({ ...config, apiKey });
+    // Clear validation when API key changes
     setValidationStatus("idle");
     setDiscoveredModels([]);
+    // Clear saved status when modifying
+    if (apiKey.length > 0) {
+      setIsSavedOnServer(false);
+    }
   };
 
   const handleTemperatureChange = (temp: string) => {
@@ -259,12 +271,20 @@ export default function Settings() {
         }
       }
 
-      // Also save locally for other fields (temperature, maxTokens)
+      // Save safe fields locally (temperature, maxTokens only)
       configStore.save(config);
+
+      // Clear API key from state for security (it's now server-side)
+      setConfig((prev) => ({
+        ...prev,
+        apiKey: "", // Clear from memory
+      }));
+
+      setIsSavedOnServer(true);
 
       toast({
         title: "Success",
-        description: "Configuration saved successfully!",
+        description: "Configuration saved! Your API key is secure on the server.",
       });
     } catch (error) {
       toast({
@@ -290,6 +310,7 @@ export default function Settings() {
       });
       setValidationStatus("idle");
       setDiscoveredModels([]);
+      setIsSavedOnServer(false);
       toast({
         title: "Cleared",
         description: "All settings have been cleared",
@@ -350,9 +371,15 @@ export default function Settings() {
                       )}
                     </button>
                   </div>
-                  <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
-                    Your API key is stored securely in your browser and never shared.
-                  </p>
+                  {isSavedOnServer && !config.apiKey ? (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-2">
+                      ✓ Configuration saved on server. Re-enter your API key to make changes or run tests.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
+                      Enter your API key to test connection and save configuration.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -467,8 +494,21 @@ export default function Settings() {
               </div>
             </div>
 
+            {/* Saved Configuration Status */}
+            {isSavedOnServer && (
+              <div className="rounded-lg p-4 flex items-center gap-3 bg-blue-500/10 text-blue-700 dark:text-blue-400">
+                <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                <div>
+                  <span className="text-sm font-medium block">Configuration Saved</span>
+                  <p className="text-xs opacity-80">
+                    API Key: {config.apiUrl ? new URL(config.apiUrl).hostname : "OpenAI"} • Model: {config.model}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Connection Status */}
-            {validationStatus !== "idle" && (
+            {validationStatus !== "idle" && !isSavedOnServer && (
               <div
                 className={`rounded-lg p-4 flex items-center gap-3 ${
                   validationStatus === "valid"

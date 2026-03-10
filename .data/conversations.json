@@ -1,0 +1,21 @@
+[
+  {
+    "id": "f3b03c73-99af-47e7-b498-af0ac77af8fe",
+    "sessionId": "60f07ab7-c578-4db4-aadf-36807798f4ec",
+    "title": "Hello what is your name?",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello what is your name?",
+        "timestamp": "2026-03-10T10:04:16.756Z"
+      },
+      {
+        "role": "user",
+        "content": "test",
+        "timestamp": "2026-03-10T10:05:08.221Z"
+      }
+    ],
+    "createdAt": "2026-03-10T10:04:02.412Z",
+    "updatedAt": "2026-03-10T10:05:08.221Z"
+  }
+]
