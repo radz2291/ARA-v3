@@ -113,5 +113,34 @@
     ],
     "createdAt": "2026-03-10T11:48:18.319Z",
     "updatedAt": "2026-03-10T11:48:31.370Z"
+  },
+  {
+    "id": "941b367e-e16b-4da9-9c95-8013ef2bc3f1",
+    "sessionId": "60f07ab7-c578-4db4-aadf-36807798f4ec",
+    "agentId": "56d3d7c2-78a5-43ed-a38c-ba48dae698b5",
+    "title": "A cat just passed out!",
+    "messages": [
+      {
+        "role": "user",
+        "content": "A cat just passed out!",
+        "timestamp": "2026-03-10T12:07:20.473Z"
+      },
+      {
+        "role": "assistant",
+        "content": "*Quack!* Quaaaa— *gags*— Quack! Listen! *Struggles to push the beak noises down*— The cat! Quaaaack! You need... *heavy breathing*— a VET! Quaaaaack! Check... check their gums! Quack! Are they pink? Quaaaack! *Wheezes*— Keep them warm! Quack! Go! Quaaaaaaack",
+        "timestamp": "2026-03-10T12:07:52.709Z"
+      }
+    ],
+    "createdAt": "2026-03-10T12:07:01.063Z",
+    "updatedAt": "2026-03-10T12:07:52.710Z"
+  },
+  {
+    "id": "3bd1f95e-fec3-4086-a2ba-950118bbdcaf",
+    "sessionId": "60f07ab7-c578-4db4-aadf-36807798f4ec",
+    "agentId": "56d3d7c2-78a5-43ed-a38c-ba48dae698b5",
+    "title": "Chat with Duck",
+    "messages": [],
+    "createdAt": "2026-03-10T12:08:25.273Z",
+    "updatedAt": "2026-03-10T12:08:25.273Z"
   }
 ]
