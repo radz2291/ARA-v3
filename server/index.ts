@@ -25,6 +25,29 @@ import {
   handleUpdateAgent,
   handleDeleteAgent,
 } from "./routes/agents";
+import {
+  createWorkspace,
+  getWorkspace,
+  listWorkspaces,
+  updateWorkspace,
+  deleteWorkspace,
+  addWorkspaceFile,
+  getWorkspaceFile,
+  deleteWorkspaceFile,
+  updateWorkspaceContext,
+} from "./routes/workspaces";
+import {
+  createTool,
+  getTool,
+  listTools,
+  listToolsByType,
+  listToolsByAgent,
+  updateTool,
+  assignToolToAgent,
+  removeToolFromAgent,
+  deleteTool,
+} from "./routes/tools";
+import { initializeEssentialTools } from "./tool-executor";
 
 export function createServer() {
   const app = express();
@@ -78,6 +101,31 @@ export function createServer() {
   app.get("/api/agents/:agentId", handleGetAgent);
   app.patch("/api/agents/:agentId", handleUpdateAgent);
   app.delete("/api/agents/:agentId", handleDeleteAgent);
+
+  // Workspace routes
+  app.post("/api/workspaces", createWorkspace);
+  app.get("/api/workspaces", listWorkspaces);
+  app.get("/api/workspaces/:id", getWorkspace);
+  app.patch("/api/workspaces/:id", updateWorkspace);
+  app.delete("/api/workspaces/:id", deleteWorkspace);
+  app.post("/api/workspaces/:id/files", addWorkspaceFile);
+  app.get("/api/workspaces/:id/files", getWorkspaceFile);
+  app.delete("/api/workspaces/:id/files", deleteWorkspaceFile);
+  app.patch("/api/workspaces/:id/context", updateWorkspaceContext);
+
+  // Tool routes
+  app.post("/api/tools", createTool);
+  app.get("/api/tools", listTools);
+  app.get("/api/tools/:id", getTool);
+  app.patch("/api/tools/:id", updateTool);
+  app.delete("/api/tools/:id", deleteTool);
+  app.get("/api/tools/type/:type", listToolsByType);
+  app.get("/api/agents/:agentId/tools", listToolsByAgent);
+  app.post("/api/tools/assign", assignToolToAgent);
+  app.post("/api/tools/unassign", removeToolFromAgent);
+
+  // Initialize essential tools on server start
+  initializeEssentialTools();
 
   return app;
 }

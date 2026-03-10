@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Plus, Settings, MessageSquare, Bot } from "lucide-react";
+import { Menu, X, Plus, Settings, MessageSquare, Bot, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/contexts/SessionContext";
@@ -97,6 +97,19 @@ export const Layout = ({ children }: LayoutProps) => {
               >
                 <Bot className="w-4 h-4" />
                 <span className="text-sm">Agents</span>
+              </Link>
+
+              <Link
+                to="/workspaces"
+                className={cn(
+                  "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors",
+                  isActive("/workspaces")
+                    ? "bg-sidebar-accent dark:bg-sidebar-accent text-sidebar-accent-foreground dark:text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground dark:text-sidebar-foreground hover:bg-sidebar-accent dark:hover:bg-sidebar-accent hover:bg-opacity-50"
+                )}
+              >
+                <Briefcase className="w-4 h-4" />
+                <span className="text-sm">Workspaces</span>
               </Link>
             </div>
 

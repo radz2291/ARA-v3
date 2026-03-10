@@ -9,6 +9,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SessionProvider } from "./contexts/SessionContext";
 import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
+import Workspaces from "./pages/Workspaces";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/" element={<Navigate to="/chat" />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/agents" element={<Agents />} />
+            <Route path="/workspaces" element={<Workspaces />} />
             <Route path="/settings" element={<Settings />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

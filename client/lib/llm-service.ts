@@ -19,8 +19,18 @@ export const DEFAULT_MODELS = [
 ] as const;
 
 export interface LLMMessage {
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "function";
   content: string;
+  name?: string; // For function messages
+}
+
+export interface ToolFunction {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>; // JSON Schema
+  };
 }
 
 export interface LLMResponse {
@@ -29,6 +39,13 @@ export interface LLMResponse {
     input: number;
     output: number;
   };
+  toolCalls?: Array<{
+    id: string;
+    function: {
+      name: string;
+      arguments: string; // JSON string
+    };
+  }>;
 }
 
 export interface LLMRequestBody {
@@ -39,6 +56,8 @@ export interface LLMRequestBody {
   apiKey?: string; // Optional - use sessionId for server-side config instead
   apiUrl?: string;
   sessionId?: string; // Use server-stored config if provided
+  tools?: ToolFunction[]; // Function definitions for tool calling
+  tool_choice?: string; // "auto", "required", or specific function name
 }
 
 export interface DiscoveredModel {
@@ -60,7 +79,10 @@ export class OpenAIProvider {
     this.sessionId = sessionId;
   }
 
-  async generateResponse(messages: LLMMessage[]): Promise<LLMResponse> {
+  async generateResponse(
+    messages: LLMMessage[],
+    tools?: ToolFunction[]
+  ): Promise<LLMResponse> {
     // Always have a fallback apiKey if available
     if (!this.sessionId && !this.config.apiKey) {
       throw new Error("API key not configured");
@@ -73,6 +95,12 @@ export class OpenAIProvider {
         temperature: this.config.temperature ?? 0.7,
         max_tokens: this.config.maxTokens ?? 2000,
       };
+
+      // Add tools if provided
+      if (tools && tools.length > 0) {
+        requestBody.tools = tools;
+        requestBody.tool_choice = "auto"; // Let model decide when to use tools
+      }
 
       // Try to use sessionId for server-side config, but always include apiKey as fallback
       if (this.sessionId) {
@@ -99,17 +127,42 @@ export class OpenAIProvider {
       }
 
       const data = await response.json();
+
+      // Handle tool calls in response
+      const toolCalls = data.choices[0]?.message?.tool_calls;
+
       return {
-        content: data.choices[0].message.content,
+        content: data.choices[0]?.message?.content || "",
         tokens: {
           input: data.usage?.prompt_tokens || 0,
           output: data.usage?.completion_tokens || 0,
         },
+        toolCalls: toolCalls?.map((call: any) => ({
+          id: call.id,
+          function: {
+            name: call.function.name,
+            arguments: call.function.arguments,
+          },
+        })),
       };
     } catch (error) {
       console.error("LLM API error:", error);
       throw error;
     }
+  }
+
+  /**
+   * Convert tools/functions to OpenAI tool format
+   */
+  static formatToolsForOpenAI(tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>): ToolFunction[] {
+    return tools.map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name.replace(/\s+/g, "_").toLowerCase(), // Sanitize name for function calling
+        description: tool.description,
+        parameters: tool.inputSchema,
+      },
+    }));
   }
 
   async discoverModels(): Promise<DiscoveredModel[]> {
@@ -153,29 +206,11 @@ export class OpenAIProvider {
     if (!this.sessionId && !this.config.apiKey) return false;
 
     try {
-      const requestBody: LLMRequestBody = {
-        messages: [{ role: "user" as const, content: "test" }],
-        model: this.config.model || "gpt-4-turbo",
-        temperature: 0.7,
-        max_tokens: 100,
-      };
-
-      // Use either sessionId or apiKey
-      if (this.sessionId) {
-        requestBody.sessionId = this.sessionId;
-      } else {
-        requestBody.apiKey = this.config.apiKey;
-        requestBody.apiUrl = this.config.apiUrl;
-      }
-
-      const response = await fetch("/api/llm", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-      return response.ok;
+      // Simpler validation test message
+      await this.generateResponse([
+        { role: "user", content: "Say 'ok' briefly." },
+      ]);
+      return true;
     } catch {
       return false;
     }

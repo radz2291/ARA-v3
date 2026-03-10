@@ -15,6 +15,8 @@ const DATA_DIR = path.join(process.cwd(), ".data");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 const CONVERSATIONS_FILE = path.join(DATA_DIR, "conversations.json");
 const AGENTS_FILE = path.join(DATA_DIR, "agents.json");
+const WORKSPACES_FILE = path.join(DATA_DIR, "workspaces.json");
+const TOOLS_FILE = path.join(DATA_DIR, "tools.json");
 
 // Ensure data directory exists
 function ensureDataDir() {
@@ -59,6 +61,32 @@ export interface Agent {
   description: string;
   persona: string; // e.g., "Research Bot", "Code Wizard", etc.
   systemInstructions: string; // Custom system prompt for this agent
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  agentIds: string[]; // IDs of agents in this workspace
+  leadAgentId?: string; // Coordinator/orchestrator agent
+  fileSystem: Record<string, string>; // File path -> content mapping
+  executionContext: Record<string, unknown>; // Shared state
+  status: "active" | "archived";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Tool {
+  id: string;
+  name: string;
+  description: string;
+  type: "web_search" | "file_ops" | "code_exec" | "custom";
+  inputSchema: Record<string, unknown>; // JSON Schema for input validation
+  outputSchema: Record<string, unknown>; // JSON Schema for output
+  assignedAgentIds: string[]; // Which agents can use this tool
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;
@@ -383,11 +411,302 @@ class AgentsStorage {
   }
 }
 
+// ===== Workspaces Storage =====
+
+class WorkspacesStorage {
+  private workspaces: Map<string, Workspace> = new Map();
+  private saveTimer: NodeJS.Timeout | null = null;
+  private needsSave = false;
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    ensureDataDir();
+    try {
+      if (fs.existsSync(WORKSPACES_FILE)) {
+        const data = fs.readFileSync(WORKSPACES_FILE, "utf-8");
+        const workspaces: Workspace[] = JSON.parse(data);
+        workspaces.forEach((w) => this.workspaces.set(w.id, w));
+      }
+    } catch (error) {
+      console.error("Error loading workspaces:", error);
+    }
+  }
+
+  private async save() {
+    try {
+      ensureDataDir();
+      const workspaces = Array.from(this.workspaces.values());
+      await fsPromises.writeFile(WORKSPACES_FILE, JSON.stringify(workspaces, null, 2));
+    } catch (error) {
+      console.error("Error saving workspaces:", error);
+    }
+  }
+
+  private debouncedSave() {
+    this.needsSave = true;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      if (this.needsSave) {
+        this.save();
+        this.needsSave = false;
+      }
+    }, 50);
+  }
+
+  create(name: string, description: string, agentIds: string[], leadAgentId?: string): Workspace {
+    const workspace: Workspace = {
+      id: randomUUID(),
+      name,
+      description,
+      agentIds,
+      leadAgentId,
+      fileSystem: {},
+      executionContext: {},
+      status: "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.workspaces.set(workspace.id, workspace);
+    this.debouncedSave();
+    return workspace;
+  }
+
+  get(workspaceId: string): Workspace | undefined {
+    return this.workspaces.get(workspaceId);
+  }
+
+  list(): Workspace[] {
+    return Array.from(this.workspaces.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  update(
+    workspaceId: string,
+    updates: Partial<Omit<Workspace, "id" | "createdAt">>
+  ): Workspace {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
+    }
+
+    const updatedWorkspace: Workspace = {
+      ...workspace,
+      ...updates,
+      id: workspace.id,
+      createdAt: workspace.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.workspaces.set(workspaceId, updatedWorkspace);
+    this.debouncedSave();
+    return updatedWorkspace;
+  }
+
+  delete(workspaceId: string): boolean {
+    const deleted = this.workspaces.delete(workspaceId);
+    if (deleted) {
+      this.debouncedSave();
+    }
+    return deleted;
+  }
+
+  addFile(workspaceId: string, filePath: string, content: string): Workspace {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
+    }
+    workspace.fileSystem[filePath] = content;
+    workspace.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return workspace;
+  }
+
+  getFile(workspaceId: string, filePath: string): string | undefined {
+    const workspace = this.workspaces.get(workspaceId);
+    return workspace?.fileSystem[filePath];
+  }
+
+  deleteFile(workspaceId: string, filePath: string): Workspace {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
+    }
+    delete workspace.fileSystem[filePath];
+    workspace.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return workspace;
+  }
+
+  updateContext(workspaceId: string, contextUpdates: Record<string, unknown>): Workspace {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
+    }
+    workspace.executionContext = { ...workspace.executionContext, ...contextUpdates };
+    workspace.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return workspace;
+  }
+}
+
+// ===== Tools Storage =====
+
+class ToolsStorage {
+  private tools: Map<string, Tool> = new Map();
+  private saveTimer: NodeJS.Timeout | null = null;
+  private needsSave = false;
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    ensureDataDir();
+    try {
+      if (fs.existsSync(TOOLS_FILE)) {
+        const data = fs.readFileSync(TOOLS_FILE, "utf-8");
+        const tools: Tool[] = JSON.parse(data);
+        tools.forEach((t) => this.tools.set(t.id, t));
+      }
+    } catch (error) {
+      console.error("Error loading tools:", error);
+    }
+  }
+
+  private async save() {
+    try {
+      ensureDataDir();
+      const tools = Array.from(this.tools.values());
+      await fsPromises.writeFile(TOOLS_FILE, JSON.stringify(tools, null, 2));
+    } catch (error) {
+      console.error("Error saving tools:", error);
+    }
+  }
+
+  private debouncedSave() {
+    this.needsSave = true;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      if (this.needsSave) {
+        this.save();
+        this.needsSave = false;
+      }
+    }, 50);
+  }
+
+  create(
+    name: string,
+    description: string,
+    type: Tool["type"],
+    inputSchema: Record<string, unknown>,
+    outputSchema: Record<string, unknown>,
+    assignedAgentIds: string[] = []
+  ): Tool {
+    const tool: Tool = {
+      id: randomUUID(),
+      name,
+      description,
+      type,
+      inputSchema,
+      outputSchema,
+      assignedAgentIds,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.tools.set(tool.id, tool);
+    this.debouncedSave();
+    return tool;
+  }
+
+  get(toolId: string): Tool | undefined {
+    return this.tools.get(toolId);
+  }
+
+  list(): Tool[] {
+    return Array.from(this.tools.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  listByType(type: Tool["type"]): Tool[] {
+    return this.list().filter((t) => t.type === type);
+  }
+
+  listByAgent(agentId: string): Tool[] {
+    return this.list().filter((t) => t.assignedAgentIds.includes(agentId));
+  }
+
+  update(
+    toolId: string,
+    updates: Partial<Omit<Tool, "id" | "createdAt">>
+  ): Tool {
+    const tool = this.tools.get(toolId);
+    if (!tool) {
+      throw new Error(`Tool ${toolId} not found`);
+    }
+
+    const updatedTool: Tool = {
+      ...tool,
+      ...updates,
+      id: tool.id,
+      createdAt: tool.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.tools.set(toolId, updatedTool);
+    this.debouncedSave();
+    return updatedTool;
+  }
+
+  assignToAgent(toolId: string, agentId: string): Tool {
+    const tool = this.tools.get(toolId);
+    if (!tool) {
+      throw new Error(`Tool ${toolId} not found`);
+    }
+    if (!tool.assignedAgentIds.includes(agentId)) {
+      tool.assignedAgentIds.push(agentId);
+      tool.updatedAt = new Date().toISOString();
+      this.debouncedSave();
+    }
+    return tool;
+  }
+
+  removeFromAgent(toolId: string, agentId: string): Tool {
+    const tool = this.tools.get(toolId);
+    if (!tool) {
+      throw new Error(`Tool ${toolId} not found`);
+    }
+    tool.assignedAgentIds = tool.assignedAgentIds.filter((id) => id !== agentId);
+    tool.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return tool;
+  }
+
+  delete(toolId: string): boolean {
+    const deleted = this.tools.delete(toolId);
+    if (deleted) {
+      this.debouncedSave();
+    }
+    return deleted;
+  }
+}
+
 // ===== Storage Singleton Instances =====
 
 let sessionsStorage: SessionsStorage;
 let conversationsStorage: ConversationsStorage;
 let agentsStorage: AgentsStorage;
+let workspacesStorage: WorkspacesStorage;
+let toolsStorage: ToolsStorage;
 
 function getSessionsStorage(): SessionsStorage {
   if (!sessionsStorage) {
@@ -408,6 +727,20 @@ function getAgentsStorage(): AgentsStorage {
     agentsStorage = new AgentsStorage();
   }
   return agentsStorage;
+}
+
+function getWorkspacesStorage(): WorkspacesStorage {
+  if (!workspacesStorage) {
+    workspacesStorage = new WorkspacesStorage();
+  }
+  return workspacesStorage;
+}
+
+function getToolsStorage(): ToolsStorage {
+  if (!toolsStorage) {
+    toolsStorage = new ToolsStorage();
+  }
+  return toolsStorage;
 }
 
 // ===== Public API =====
@@ -452,5 +785,43 @@ export const storage = {
     update: (agentId: string, updates: Partial<Omit<Agent, "id" | "createdAt">>) =>
       getAgentsStorage().update(agentId, updates),
     delete: (agentId: string) => getAgentsStorage().delete(agentId),
+  },
+  workspaces: {
+    create: (name: string, description: string, agentIds: string[], leadAgentId?: string) =>
+      getWorkspacesStorage().create(name, description, agentIds, leadAgentId),
+    get: (workspaceId: string) => getWorkspacesStorage().get(workspaceId),
+    list: () => getWorkspacesStorage().list(),
+    update: (workspaceId: string, updates: Partial<Omit<Workspace, "id" | "createdAt">>) =>
+      getWorkspacesStorage().update(workspaceId, updates),
+    delete: (workspaceId: string) => getWorkspacesStorage().delete(workspaceId),
+    addFile: (workspaceId: string, filePath: string, content: string) =>
+      getWorkspacesStorage().addFile(workspaceId, filePath, content),
+    getFile: (workspaceId: string, filePath: string) =>
+      getWorkspacesStorage().getFile(workspaceId, filePath),
+    deleteFile: (workspaceId: string, filePath: string) =>
+      getWorkspacesStorage().deleteFile(workspaceId, filePath),
+    updateContext: (workspaceId: string, contextUpdates: Record<string, unknown>) =>
+      getWorkspacesStorage().updateContext(workspaceId, contextUpdates),
+  },
+  tools: {
+    create: (
+      name: string,
+      description: string,
+      type: Tool["type"],
+      inputSchema: Record<string, unknown>,
+      outputSchema: Record<string, unknown>,
+      assignedAgentIds?: string[]
+    ) => getToolsStorage().create(name, description, type, inputSchema, outputSchema, assignedAgentIds),
+    get: (toolId: string) => getToolsStorage().get(toolId),
+    list: () => getToolsStorage().list(),
+    listByType: (type: Tool["type"]) => getToolsStorage().listByType(type),
+    listByAgent: (agentId: string) => getToolsStorage().listByAgent(agentId),
+    update: (toolId: string, updates: Partial<Omit<Tool, "id" | "createdAt">>) =>
+      getToolsStorage().update(toolId, updates),
+    assignToAgent: (toolId: string, agentId: string) =>
+      getToolsStorage().assignToAgent(toolId, agentId),
+    removeFromAgent: (toolId: string, agentId: string) =>
+      getToolsStorage().removeFromAgent(toolId, agentId),
+    delete: (toolId: string) => getToolsStorage().delete(toolId),
   },
 };

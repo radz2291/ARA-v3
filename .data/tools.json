@@ -1,0 +1,165 @@
+[
+  {
+    "id": "ad0e8a3c-58d7-4e71-bae6-2898c727cbd8",
+    "name": "Web Search",
+    "description": "Search the web for information",
+    "type": "web_search",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "resultCount": {
+          "type": "number"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "snippet": {
+                "type": "string"
+              },
+              "relevance": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      }
+    },
+    "assignedAgentIds": [],
+    "status": "active",
+    "createdAt": "2026-03-10T14:14:48.096Z",
+    "updatedAt": "2026-03-10T14:14:48.096Z"
+  },
+  {
+    "id": "cc5d2e25-1378-4067-830a-02992618fc55",
+    "name": "File Operations",
+    "description": "Read, write, and manage files in the workspace",
+    "type": "file_ops",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "read",
+            "write",
+            "append",
+            "delete"
+          ],
+          "description": "File operation to perform"
+        },
+        "filePath": {
+          "type": "string",
+          "description": "Path to the file"
+        },
+        "content": {
+          "type": "string",
+          "description": "Content to write or append (for write/append operations)"
+        }
+      },
+      "required": [
+        "operation",
+        "filePath"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "filePath": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number"
+        },
+        "success": {
+          "type": "boolean"
+        }
+      }
+    },
+    "assignedAgentIds": [],
+    "status": "active",
+    "createdAt": "2026-03-10T14:14:48.097Z",
+    "updatedAt": "2026-03-10T14:14:48.097Z"
+  },
+  {
+    "id": "e8e298ac-f89c-437c-baa9-b95e22240693",
+    "name": "Code Execution",
+    "description": "Execute code in a sandboxed environment",
+    "type": "code_exec",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Code to execute"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "javascript",
+            "js"
+          ],
+          "description": "Programming language (default: javascript)"
+        }
+      },
+      "required": [
+        "code"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "executionTime": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "assignedAgentIds": [],
+    "status": "active",
+    "createdAt": "2026-03-10T14:14:48.097Z",
+    "updatedAt": "2026-03-10T14:14:48.097Z"
+  }
+]

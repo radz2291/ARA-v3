@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Plus, AlertCircle, Trash2, Edit2, Check, X } from "lucide-react";
+import { Send, Plus, AlertCircle, Trash2, Edit2, Check, X, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/Layout";
@@ -32,6 +32,17 @@ interface Agent {
   status: "active" | "inactive";
 }
 
+interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  agentIds: string[];
+  leadAgentId?: string;
+  status: "active" | "archived";
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function Chat() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -45,9 +56,11 @@ export default function Chat() {
     renameConversation
   } = useSession();
 
-  // Get sessionId and conversationId from URL params if provided, otherwise use context
+  // Get sessionId, conversationId, workspaceId, and agentId from URL params
   const urlSessionId = searchParams.get("sessionId");
   const urlConversationId = searchParams.get("conversationId");
+  const workspaceId = searchParams.get("workspaceId");
+  const urlAgentId = searchParams.get("agentId");
   const sessionId = urlSessionId || contextSessionId;
   const currentConversationId = urlConversationId || contextConversationId;
 
@@ -64,6 +77,9 @@ export default function Chat() {
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
   const [agent, setAgent] = useState<Agent | null>(null);
   const [isLoadingAgent, setIsLoadingAgent] = useState(false);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
+  const [workspaceAgents, setWorkspaceAgents] = useState<Agent[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load configuration and conversations on mount
@@ -80,14 +96,41 @@ export default function Chat() {
     }
   }, [urlConversationId, contextConversationId]);
 
+  // Load workspace if workspaceId is provided
+  useEffect(() => {
+    if (workspaceId) {
+      loadWorkspace(workspaceId);
+    }
+  }, [workspaceId]);
+
   // Load agent if agentId is provided in URL
   useEffect(() => {
-    const agentId = searchParams.get("agentId");
-    if (agentId) {
-      loadAgent(agentId);
+    if (urlAgentId) {
+      loadAgent(urlAgentId);
     }
-  }, [searchParams]);
+  }, [urlAgentId]);
 
+
+  const loadWorkspace = async (id: string) => {
+    try {
+      setIsLoadingWorkspace(true);
+      const response = await fetch(`/api/workspaces/${id}`);
+      if (response.ok) {
+        const workspaceData = await response.json();
+        setWorkspace(workspaceData);
+        // Load all agents in the workspace
+        const agentPromises = workspaceData.agentIds.map((agentId: string) =>
+          fetch(`/api/agents/${agentId}`).then((r) => (r.ok ? r.json() : null))
+        );
+        const agents = await Promise.all(agentPromises);
+        setWorkspaceAgents(agents.filter((a): a is Agent => a !== null));
+      }
+    } catch (error) {
+      console.error("Error loading workspace:", error);
+    } finally {
+      setIsLoadingWorkspace(false);
+    }
+  };
 
   const loadAgent = async (agentId: string) => {
     try {
@@ -325,40 +368,71 @@ export default function Chat() {
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">
           {/* Header */}
-          <div className="border-b border-border dark:border-border px-6 py-4 flex items-center justify-between">
-            <div>
-              {isLoadingConversation || isLoadingAgent ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : (
-                <>
-                  <h1 className="text-xl font-semibold text-foreground dark:text-foreground">
-                    {agent ? `Chat with ${agent.name}` : currentConversation?.title || "Chat"}
-                  </h1>
-                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
-                    {agent ? (
-                      <>
-                        <span className="font-medium">{agent.persona}</span> • {agent.description}
-                      </>
-                    ) : (
-                      <>
-                        {config?.apiUrl
-                          ? new URL(config.apiUrl).hostname || "Custom Provider"
-                          : "OpenAI"}{" "}
-                        • {config?.model}
-                      </>
-                    )}
-                  </p>
-                </>
-              )}
+          <div className="border-b border-border dark:border-border px-6 py-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex-1">
+                {isLoadingConversation || isLoadingAgent || isLoadingWorkspace ? (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                ) : (
+                  <>
+                    <h1 className="text-xl font-semibold text-foreground dark:text-foreground">
+                      {workspace
+                        ? workspace.name
+                        : agent
+                        ? `Chat with ${agent.name}`
+                        : currentConversation?.title || "Chat"}
+                    </h1>
+                    <p className="text-sm text-muted-foreground dark:text-muted-foreground">
+                      {workspace ? (
+                        <span className="flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          {workspaceAgents.length} agent{workspaceAgents.length !== 1 ? "s" : ""} • {workspace.description}
+                        </span>
+                      ) : agent ? (
+                        <>
+                          <span className="font-medium">{agent.persona}</span> • {agent.description}
+                        </>
+                      ) : (
+                        <>
+                          {config?.apiUrl
+                            ? new URL(config.apiUrl).hostname || "Custom Provider"
+                            : "OpenAI"}{" "}
+                          • {config?.model}
+                        </>
+                      )}
+                    </p>
+                  </>
+                )}
+              </div>
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="hover:bg-secondary dark:hover:bg-secondary"
+              >
+                <Link to="/settings">Settings</Link>
+              </Button>
             </div>
-            <Button
-              asChild
-              variant="ghost"
-              size="sm"
-              className="hover:bg-secondary dark:hover:bg-secondary"
-            >
-              <Link to="/settings">Settings</Link>
-            </Button>
+
+            {/* Workspace Agent Selector */}
+            {workspace && workspaceAgents.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {workspaceAgents.map((workspaceAgent) => (
+                  <Button
+                    key={workspaceAgent.id}
+                    variant={agent?.id === workspaceAgent.id ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => loadAgent(workspaceAgent.id)}
+                    className="text-xs"
+                  >
+                    {workspaceAgent.name}
+                    {workspace.leadAgentId === workspaceAgent.id && (
+                      <span className="ml-1 text-xs">(Lead)</span>
+                    )}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Messages */}
