@@ -219,8 +219,20 @@ export default function Chat() {
     setIsLoading(true);
 
     try {
-      // Save user message to server
-      await fetch(
+      // Create user message for local state
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content: userContent,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Immediately update UI with user message
+      setMessages((prev) => [...prev, userMessage]);
+
+      // Parallelize: Start user message save and LLM call concurrently
+      const isFirstMessage = messages.length === 0;
+      const userSavePromise = fetch(
         `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages`,
         {
           method: "POST",
@@ -232,25 +244,7 @@ export default function Chat() {
         }
       );
 
-      // Update local state with user message
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        role: "user",
-        content: userContent,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMessage]);
-
-      // If this is the first message, auto-title the conversation
-      if (messages.length === 0) {
-        const firstLineWords = userContent.split(" ").slice(0, 5).join(" ");
-        await renameConversation(
-          currentConversationId,
-          firstLineWords.length > 50 ? firstLineWords.slice(0, 50) + "..." : firstLineWords
-        );
-      }
-
-      // Call LLM API with sessionId to use server-stored configuration
+      // Call LLM API with sessionId
       const provider = createLLMProvider(config, sessionId);
       const llmMessages: LLMMessage[] = [
         ...messages.map((m) => ({
@@ -263,11 +257,33 @@ export default function Chat() {
         },
       ];
 
-      setIsSavingMessage(true);
-      const response = await provider.generateResponse(llmMessages);
+      const llmPromise = provider.generateResponse(llmMessages);
 
-      // Save assistant response to server
-      await fetch(
+      // Wait for LLM response (don't wait for user save)
+      const response = await llmPromise;
+
+      // Create assistant message and update UI optimistically
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: response.content,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Background: Auto-rename conversation if first message (fire-and-forget)
+      if (isFirstMessage) {
+        const firstLineWords = userContent.split(" ").slice(0, 5).join(" ");
+        const title = firstLineWords.length > 50
+          ? firstLineWords.slice(0, 50) + "..."
+          : firstLineWords;
+        renameConversation(currentConversationId, title).catch((error) => {
+          console.error("Failed to auto-rename conversation:", error);
+        });
+      }
+
+      // Background: Save assistant message (fire-and-forget)
+      fetch(
         `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages`,
         {
           method: "POST",
@@ -277,16 +293,17 @@ export default function Chat() {
             content: response.content,
           }),
         }
-      );
+      ).catch((error) => {
+        console.error("Failed to save assistant message:", error);
+        toast({
+          title: "Warning",
+          description: "Failed to save assistant response. Please refresh to verify.",
+          variant: "destructive",
+        });
+      });
 
-      // Update local state with assistant message
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: response.content,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      // Ensure user save completes
+      await userSavePromise;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to get response";

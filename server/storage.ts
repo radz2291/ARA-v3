@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
+import { promises as fsPromises } from "fs";
 
 // Data directory
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -54,6 +55,8 @@ export interface Conversation {
 
 class SessionsStorage {
   private sessions: Map<string, Session> = new Map();
+  private saveTimer: NodeJS.Timeout | null = null;
+  private needsSave = false;
 
   constructor() {
     this.load();
@@ -72,14 +75,27 @@ class SessionsStorage {
     }
   }
 
-  private save() {
+  private async save() {
     try {
       ensureDataDir();
       const sessions = Array.from(this.sessions.values());
-      fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+      await fsPromises.writeFile(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
     } catch (error) {
       console.error("Error saving sessions:", error);
     }
+  }
+
+  private debouncedSave() {
+    this.needsSave = true;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      if (this.needsSave) {
+        this.save();
+        this.needsSave = false;
+      }
+    }, 50);
   }
 
   create(): Session {
@@ -88,7 +104,7 @@ class SessionsStorage {
       createdAt: new Date().toISOString(),
     };
     this.sessions.set(session.id, session);
-    this.save();
+    this.debouncedSave();
     return session;
   }
 
@@ -109,7 +125,7 @@ class SessionsStorage {
       throw new Error(`Session ${sessionId} not found`);
     }
     session.config = config;
-    this.save();
+    this.debouncedSave();
     return session;
   }
 
@@ -119,7 +135,11 @@ class SessionsStorage {
   }
 
   delete(sessionId: string): boolean {
-    return this.sessions.delete(sessionId);
+    const deleted = this.sessions.delete(sessionId);
+    if (deleted) {
+      this.debouncedSave();
+    }
+    return deleted;
   }
 }
 
@@ -127,6 +147,8 @@ class SessionsStorage {
 
 class ConversationsStorage {
   private conversations: Map<string, Conversation> = new Map();
+  private saveTimer: NodeJS.Timeout | null = null;
+  private needsSave = false;
 
   constructor() {
     this.load();
@@ -145,14 +167,27 @@ class ConversationsStorage {
     }
   }
 
-  private save() {
+  private async save() {
     try {
       ensureDataDir();
       const conversations = Array.from(this.conversations.values());
-      fs.writeFileSync(CONVERSATIONS_FILE, JSON.stringify(conversations, null, 2));
+      await fsPromises.writeFile(CONVERSATIONS_FILE, JSON.stringify(conversations, null, 2));
     } catch (error) {
       console.error("Error saving conversations:", error);
     }
+  }
+
+  private debouncedSave() {
+    this.needsSave = true;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      if (this.needsSave) {
+        this.save();
+        this.needsSave = false;
+      }
+    }, 50);
   }
 
   create(sessionId: string, title: string): Conversation {
@@ -165,7 +200,7 @@ class ConversationsStorage {
       updatedAt: new Date().toISOString(),
     };
     this.conversations.set(conversation.id, conversation);
-    this.save();
+    this.debouncedSave();
     return conversation;
   }
 
@@ -201,7 +236,7 @@ class ConversationsStorage {
 
     conversation.messages.push(message);
     conversation.updatedAt = new Date().toISOString();
-    this.save();
+    this.debouncedSave();
     return message;
   }
 
@@ -212,12 +247,16 @@ class ConversationsStorage {
     }
     conversation.title = title;
     conversation.updatedAt = new Date().toISOString();
-    this.save();
+    this.debouncedSave();
     return conversation;
   }
 
   delete(conversationId: string): boolean {
-    return this.conversations.delete(conversationId);
+    const deleted = this.conversations.delete(conversationId);
+    if (deleted) {
+      this.debouncedSave();
+    }
+    return deleted;
   }
 }
 
