@@ -18,6 +18,13 @@ import {
   handleUpdateConversation,
   handleDeleteConversation,
 } from "./routes/conversations";
+import {
+  handleListAgents,
+  handleGetAgent,
+  handleCreateAgent,
+  handleUpdateAgent,
+  handleDeleteAgent,
+} from "./routes/agents";
 
 export function createServer() {
   const app = express();
@@ -64,6 +71,13 @@ export function createServer() {
     "/api/sessions/:sessionId/conversations/:conversationId",
     handleDeleteConversation
   );
+
+  // Agent routes
+  app.get("/api/agents", handleListAgents);
+  app.post("/api/agents", handleCreateAgent);
+  app.get("/api/agents/:agentId", handleGetAgent);
+  app.patch("/api/agents/:agentId", handleUpdateAgent);
+  app.delete("/api/agents/:agentId", handleDeleteAgent);
 
   return app;
 }

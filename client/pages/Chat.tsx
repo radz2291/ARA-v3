@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/Layout";
 import { cn } from "@/lib/utils";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   LLMMessage,
   createLLMProvider,
@@ -23,14 +23,25 @@ interface Message {
 
 interface Conversation {
   id: string;
+  agentId?: string;
   title: string;
   messageCount: number;
   createdAt: string;
   updatedAt: string;
 }
 
+interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  persona: string;
+  systemInstructions: string;
+  status: "active" | "inactive";
+}
+
 export default function Chat() {
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const { sessionId, currentConversationId, setCurrentConversationId, isLoadingSession } = useSession();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -44,6 +55,8 @@ export default function Chat() {
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [agent, setAgent] = useState<Agent | null>(null);
+  const [isLoadingAgent, setIsLoadingAgent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load configuration and conversations on mount
@@ -52,6 +65,14 @@ export default function Chat() {
     setConfig(savedConfig);
     setIsConfigured(!!savedConfig);
   }, []);
+
+  // Load agent if agentId is provided in URL
+  useEffect(() => {
+    const agentId = searchParams.get("agentId");
+    if (agentId) {
+      loadAgent(agentId);
+    }
+  }, [searchParams]);
 
   // Load conversations when sessionId changes
   useEffect(() => {
@@ -83,6 +104,21 @@ export default function Chat() {
       console.error("Error loading conversations:", error);
     } finally {
       setIsLoadingConversations(false);
+    }
+  };
+
+  const loadAgent = async (agentId: string) => {
+    try {
+      setIsLoadingAgent(true);
+      const response = await fetch(`/api/agents/${agentId}`);
+      if (response.ok) {
+        const agentData = await response.json();
+        setAgent(agentData);
+      }
+    } catch (error) {
+      console.error("Error loading agent:", error);
+    } finally {
+      setIsLoadingAgent(false);
     }
   };
 
@@ -244,18 +280,31 @@ export default function Chat() {
         }
       );
 
-      // Call LLM API with sessionId
+      // Call LLM API with sessionId and agent system instructions
       const provider = createLLMProvider(config, sessionId);
-      const llmMessages: LLMMessage[] = [
+      const llmMessages: LLMMessage[] = [];
+
+      // Add agent system instructions if available
+      if (agent?.systemInstructions) {
+        llmMessages.push({
+          role: "system" as const,
+          content: agent.systemInstructions,
+        });
+      }
+
+      // Add conversation history
+      llmMessages.push(
         ...messages.map((m) => ({
           role: m.role,
           content: m.content,
-        })),
-        {
-          role: "user" as const,
-          content: userContent,
-        },
-      ];
+        }))
+      );
+
+      // Add user message
+      llmMessages.push({
+        role: "user" as const,
+        content: userContent,
+      });
 
       const llmPromise = provider.generateResponse(llmMessages);
 
@@ -498,18 +547,26 @@ export default function Chat() {
           {/* Header */}
           <div className="border-b border-border dark:border-border px-6 py-4 flex items-center justify-between">
             <div>
-              {isLoadingConversation ? (
+              {isLoadingConversation || isLoadingAgent ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
               ) : (
                 <>
                   <h1 className="text-xl font-semibold text-foreground dark:text-foreground">
-                    {currentConversation?.title || "Chat"}
+                    {agent ? `Chat with ${agent.name}` : currentConversation?.title || "Chat"}
                   </h1>
                   <p className="text-sm text-muted-foreground dark:text-muted-foreground">
-                    {config?.apiUrl
-                      ? new URL(config.apiUrl).hostname || "Custom Provider"
-                      : "OpenAI"}{" "}
-                    • {config?.model}
+                    {agent ? (
+                      <>
+                        <span className="font-medium">{agent.persona}</span> • {agent.description}
+                      </>
+                    ) : (
+                      <>
+                        {config?.apiUrl
+                          ? new URL(config.apiUrl).hostname || "Custom Provider"
+                          : "OpenAI"}{" "}
+                        • {config?.model}
+                      </>
+                    )}
                   </p>
                 </>
               )}

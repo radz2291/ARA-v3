@@ -14,6 +14,7 @@ import { promises as fsPromises } from "fs";
 const DATA_DIR = path.join(process.cwd(), ".data");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 const CONVERSATIONS_FILE = path.join(DATA_DIR, "conversations.json");
+const AGENTS_FILE = path.join(DATA_DIR, "agents.json");
 
 // Ensure data directory exists
 function ensureDataDir() {
@@ -45,8 +46,20 @@ export interface Message {
 export interface Conversation {
   id: string;
   sessionId: string;
+  agentId?: string; // Optional - which agent this conversation is with
   title: string;
   messages: Message[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  persona: string; // e.g., "Research Bot", "Code Wizard", etc.
+  systemInstructions: string; // Custom system prompt for this agent
+  status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;
 }
@@ -260,10 +273,120 @@ class ConversationsStorage {
   }
 }
 
+// ===== Agents Storage =====
+
+class AgentsStorage {
+  private agents: Map<string, Agent> = new Map();
+  private saveTimer: NodeJS.Timeout | null = null;
+  private needsSave = false;
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    ensureDataDir();
+    try {
+      if (fs.existsSync(AGENTS_FILE)) {
+        const data = fs.readFileSync(AGENTS_FILE, "utf-8");
+        const agents: Agent[] = JSON.parse(data);
+        agents.forEach((a) => this.agents.set(a.id, a));
+      }
+    } catch (error) {
+      console.error("Error loading agents:", error);
+    }
+  }
+
+  private async save() {
+    try {
+      ensureDataDir();
+      const agents = Array.from(this.agents.values());
+      await fsPromises.writeFile(AGENTS_FILE, JSON.stringify(agents, null, 2));
+    } catch (error) {
+      console.error("Error saving agents:", error);
+    }
+  }
+
+  private debouncedSave() {
+    this.needsSave = true;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      if (this.needsSave) {
+        this.save();
+        this.needsSave = false;
+      }
+    }, 50);
+  }
+
+  create(
+    name: string,
+    description: string,
+    persona: string,
+    systemInstructions: string
+  ): Agent {
+    const agent: Agent = {
+      id: randomUUID(),
+      name,
+      description,
+      persona,
+      systemInstructions,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.agents.set(agent.id, agent);
+    this.debouncedSave();
+    return agent;
+  }
+
+  get(agentId: string): Agent | undefined {
+    return this.agents.get(agentId);
+  }
+
+  list(): Agent[] {
+    return Array.from(this.agents.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  update(
+    agentId: string,
+    updates: Partial<Omit<Agent, "id" | "createdAt">>
+  ): Agent {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+
+    const updatedAgent: Agent = {
+      ...agent,
+      ...updates,
+      id: agent.id,
+      createdAt: agent.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.agents.set(agentId, updatedAgent);
+    this.debouncedSave();
+    return updatedAgent;
+  }
+
+  delete(agentId: string): boolean {
+    const deleted = this.agents.delete(agentId);
+    if (deleted) {
+      this.debouncedSave();
+    }
+    return deleted;
+  }
+}
+
 // ===== Storage Singleton Instances =====
 
 let sessionsStorage: SessionsStorage;
 let conversationsStorage: ConversationsStorage;
+let agentsStorage: AgentsStorage;
 
 function getSessionsStorage(): SessionsStorage {
   if (!sessionsStorage) {
@@ -277,6 +400,13 @@ function getConversationsStorage(): ConversationsStorage {
     conversationsStorage = new ConversationsStorage();
   }
   return conversationsStorage;
+}
+
+function getAgentsStorage(): AgentsStorage {
+  if (!agentsStorage) {
+    agentsStorage = new AgentsStorage();
+  }
+  return agentsStorage;
 }
 
 // ===== Public API =====
@@ -308,5 +438,18 @@ export const storage = {
       getConversationsStorage().updateTitle(conversationId, title),
     delete: (conversationId: string) =>
       getConversationsStorage().delete(conversationId),
+  },
+  agents: {
+    create: (
+      name: string,
+      description: string,
+      persona: string,
+      systemInstructions: string
+    ) => getAgentsStorage().create(name, description, persona, systemInstructions),
+    get: (agentId: string) => getAgentsStorage().get(agentId),
+    list: () => getAgentsStorage().list(),
+    update: (agentId: string, updates: Partial<Omit<Agent, "id" | "createdAt">>) =>
+      getAgentsStorage().update(agentId, updates),
+    delete: (agentId: string) => getAgentsStorage().delete(agentId),
   },
 };

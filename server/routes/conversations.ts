@@ -14,7 +14,7 @@ import { storage } from "../storage";
 export const handleCreateConversation: RequestHandler = (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { title } = req.body;
+    const { title, agentId } = req.body;
 
     // Validate required fields
     if (!title) {
@@ -30,9 +30,15 @@ export const handleCreateConversation: RequestHandler = (req, res) => {
     // Create conversation
     const conversation = storage.conversations.create(sessionId, title);
 
+    // If agentId is provided, update the conversation with it
+    if (agentId) {
+      conversation.agentId = agentId;
+    }
+
     return res.json({
       id: conversation.id,
       sessionId: conversation.sessionId,
+      agentId: conversation.agentId,
       title: conversation.title,
       createdAt: conversation.createdAt,
       messages: [],
@@ -65,6 +71,7 @@ export const handleListConversations: RequestHandler = (req, res) => {
     return res.json({
       conversations: conversations.map((c) => ({
         id: c.id,
+        agentId: c.agentId,
         title: c.title,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
@@ -109,6 +116,7 @@ export const handleGetConversation: RequestHandler = (req, res) => {
     return res.json({
       id: conversation.id,
       sessionId: conversation.sessionId,
+      agentId: conversation.agentId,
       title: conversation.title,
       messages: conversation.messages,
       createdAt: conversation.createdAt,

@@ -19,7 +19,7 @@ export const DEFAULT_MODELS = [
 ] as const;
 
 export interface LLMMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
 }
 
