@@ -53,7 +53,7 @@ export default function Settings() {
   const availableModels = discoveredModels.length > 0 ? discoveredModels : DEFAULT_MODELS.map((id) => ({ id }));
 
   const handleApiUrlChange = (apiUrl: string) => {
-    setConfig({ ...config, apiUrl: apiUrl.trim() });
+    setConfig({ ...config, apiUrl });
     setValidationStatus("idle");
     setDiscoveredModels([]);
   };
@@ -307,14 +307,14 @@ export default function Settings() {
                     API Endpoint URL (Optional)
                   </label>
                   <Input
-                    type="url"
+                    type="text"
                     value={config.apiUrl}
                     onChange={(e) => handleApiUrlChange(e.target.value)}
-                    placeholder="https://api.openai.com/v1 (or custom provider URL)"
+                    placeholder="https://api.openai.com/v1 or https://api.z.ai/api/coding/paas/v4"
                     className="bg-background dark:bg-background border-border dark:border-border text-foreground dark:text-foreground placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
                   />
                   <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-2">
-                    Leave empty to use OpenAI. Use custom URL for Ollama, Mistral, or other OpenAI-compatible APIs.
+                    Leave empty to use OpenAI. For Z.ai use: https://api.z.ai/api/coding/paas/v4
                   </p>
                 </div>
               </div>

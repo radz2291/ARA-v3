@@ -21,7 +21,8 @@ function isZaiUrl(url?: string): boolean {
 }
 
 function getZaiChatPath(baseUrl: string): string {
-  // Z.ai uses /api/coding/paas/v4/chat/completions
+  // Z.ai endpoint: https://api.z.ai/api/coding/paas/v4
+  // Chat completions path: /chat/completions (appended to base)
   if (baseUrl.includes("/api/coding/paas")) {
     return baseUrl.endsWith("/") ? "chat/completions" : "/chat/completions";
   }
@@ -61,22 +62,21 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
     // Prepare request headers
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
     };
-
-    if (isZai) {
-      // Z.ai uses different auth header
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    } else {
-      // OpenAI-compatible
-      headers["Authorization"] = `Bearer ${apiKey}`;
-    }
 
     console.log(`[LLM] Calling ${endpoint}`);
     console.log(`[LLM] Is Z.ai: ${isZai}`);
     console.log(`[LLM] Model: ${model}`);
+    console.log(`[LLM] Request body:`, JSON.stringify({
+      model: model,
+      messages: messages,
+      temperature: temperature || 0.7,
+      max_tokens: max_tokens || 2000,
+    }, null, 2));
 
     // Forward request to provider API
-    const providerResponse = await fetch(endpoint, {
+    let providerResponse = await fetch(endpoint, {
       method: "POST",
       headers: headers,
       body: JSON.stringify({
@@ -88,6 +88,23 @@ export const handleLLMRequest: RequestHandler = async (req, res) => {
     });
 
     console.log(`[LLM] Response status: ${providerResponse.status}`);
+
+    // If Z.ai endpoint fails, try alternative format (base URL might be the chat endpoint)
+    if (!providerResponse.ok && isZai && !endpoint.includes("/chat/completions")) {
+      console.log(`[LLM] Trying alternative Z.ai endpoint...`);
+      const altEndpoint = baseUrl;
+      providerResponse = await fetch(altEndpoint, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({
+          model: model,
+          messages: messages,
+          temperature: temperature || 0.7,
+          max_tokens: max_tokens || 2000,
+        }),
+      });
+      console.log(`[LLM] Alternative response status: ${providerResponse.status}`);
+    }
 
     // Check if provider API call was successful
     if (!providerResponse.ok) {
