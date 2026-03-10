@@ -29,14 +29,24 @@ interface Agent {
   description: string;
   persona: string;
   systemInstructions: string;
+  toolIds?: string[];
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;
 }
 
+interface Tool {
+  id: string;
+  name: string;
+  functionName: string;
+  description: string;
+  type: string;
+}
+
 export default function Agents() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -46,10 +56,30 @@ export default function Agents() {
   const [isSaving, setIsSaving] = useState(false);
   const { createNewConversation } = useSession();
 
-  // Load agents
+  // Load agents and tools
   useEffect(() => {
-    loadAgents();
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      await Promise.all([loadAgents(), loadTools()]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadTools = async () => {
+    try {
+      const response = await fetch("/api/tools");
+      if (!response.ok) throw new Error("Failed to load tools");
+      const data = await response.json();
+      setTools(data.tools || []);
+    } catch (error) {
+      console.error("Error loading tools:", error);
+    }
+  };
 
   const loadAgents = async () => {
     try {
@@ -62,6 +92,27 @@ export default function Agents() {
       console.error("Error loading agents:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const getAgentTools = (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent?.toolIds) return [];
+    return tools.filter((t) => agent.toolIds!.includes(t.id));
+  };
+
+  const getToolTypeColor = (type: string) => {
+    switch (type) {
+      case "web_search":
+        return "bg-blue-500/10 text-blue-700 dark:text-blue-400";
+      case "file_ops":
+        return "bg-purple-500/10 text-purple-700 dark:text-purple-400";
+      case "code_exec":
+        return "bg-red-500/10 text-red-700 dark:text-red-400";
+      case "custom":
+        return "bg-green-500/10 text-green-700 dark:text-green-400";
+      default:
+        return "bg-gray-500/10 text-gray-700 dark:text-gray-400";
     }
   };
 
@@ -209,23 +260,45 @@ export default function Agents() {
                         {agent.description}
                       </p>
 
-                      <div className="flex flex-wrap gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground dark:text-muted-foreground">
-                            Persona:{" "}
-                          </span>
-                          <span className="text-foreground dark:text-foreground font-medium">
-                            {agent.persona}
-                          </span>
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground dark:text-muted-foreground">
+                              Persona:{" "}
+                            </span>
+                            <span className="text-foreground dark:text-foreground font-medium">
+                              {agent.persona}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground dark:text-muted-foreground">
+                              Created:{" "}
+                            </span>
+                            <span className="text-foreground dark:text-foreground font-medium">
+                              {new Date(agent.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground dark:text-muted-foreground">
-                            Created:{" "}
-                          </span>
-                          <span className="text-foreground dark:text-foreground font-medium">
-                            {new Date(agent.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
+
+                        {/* Tools Display */}
+                        {getAgentTools(agent.id).length > 0 && (
+                          <div>
+                            <p className="text-xs text-muted-foreground dark:text-muted-foreground mb-2">
+                              Tools ({getAgentTools(agent.id).length})
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {getAgentTools(agent.id).map((tool) => (
+                                <span
+                                  key={tool.id}
+                                  className={`text-xs px-2 py-1 rounded-full font-medium ${getToolTypeColor(tool.type)}`}
+                                  title={tool.description}
+                                >
+                                  {tool.name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 

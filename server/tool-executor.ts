@@ -7,6 +7,7 @@
 
 import { storage, Tool } from "./storage";
 import { randomUUID } from "crypto";
+import ivm from "isolated-vm";
 
 /**
  * Tool execution result
@@ -160,8 +161,8 @@ async function executeFileOps(
 
 /**
  * Code Execution Tool Implementation
- * NOTE: This is a basic implementation. In production, use a proper sandbox
- * like vm2, isolated-vm, or a separate service (Docker container, etc.)
+ * Uses isolated-vm for safe V8 sandbox execution
+ * Provides industry-standard isolation with strict resource limits
  */
 async function executeCode(
   input: Record<string, unknown>,
@@ -183,31 +184,86 @@ async function executeCode(
     );
   }
 
-  try {
-    // NOTE: This is a simplified implementation
-    // In production, use a proper sandbox like vm2 or isolated-vm
-    // For now, we prevent dangerous operations and run in a controlled way
+  const startTime = Date.now();
 
-    if (
-      code.includes("require(") ||
-      code.includes("import ") ||
-      code.includes("eval(") ||
-      code.includes("Function(")
-    ) {
-      throw new Error("Dangerous operations not allowed in sandboxed code");
+  try {
+    // Create a new isolate with memory limits (128MB)
+    const isolate = new ivm.Isolate({ memoryLimit: 128 });
+
+    // Create a context within the isolate
+    const context_obj = await isolate.createContext();
+
+    // Prepare safe sandbox environment
+    // Only expose safe, read-only APIs
+    const jail = context_obj.global;
+
+    // Expose console for logging
+    await jail.set("console", new ivm.ExternalCopy({
+      log: (...args: unknown[]) => console.log("[Sandbox]", ...args),
+      error: (...args: unknown[]) => console.error("[Sandbox]", ...args),
+      warn: (...args: unknown[]) => console.warn("[Sandbox]", ...args),
+      info: (...args: unknown[]) => console.info("[Sandbox]", ...args),
+    }).deref());
+
+    // Expose JSON (read-only)
+    await jail.set("JSON", JSON);
+
+    // Expose Math (read-only)
+    await jail.set("Math", Math);
+
+    // Expose Array, Object, String, Number (constructors only)
+    await jail.set("Array", Array);
+    await jail.set("Object", Object);
+    await jail.set("String", String);
+    await jail.set("Number", Number);
+    await jail.set("Boolean", Boolean);
+    await jail.set("Date", Date);
+
+    // Execute code with 5-second timeout
+    const result = await context_obj.eval(code, {
+      timeout: 5000,
+      filename: "sandbox.js",
+    });
+
+    const executionTime = Date.now() - startTime;
+
+    // Try to serialize the result
+    let output: unknown;
+    try {
+      output = JSON.stringify(result);
+    } catch {
+      output = String(result);
     }
 
-    // For now, return a mock execution result
-    // A real implementation would execute the code and capture output
     return {
       language: lang,
       code,
-      output: "Code execution is in sandbox mode. Full execution coming soon.",
-      executionTime: 10, // milliseconds
+      output,
       status: "success",
+      executionTime,
     };
   } catch (error: any) {
-    throw new Error(`Code execution failed: ${error.message}`);
+    const executionTime = Date.now() - startTime;
+    const errorMsg = error.message || String(error);
+
+    // Provide helpful error messages
+    let userFriendlyError = errorMsg;
+    if (errorMsg.includes("timeout")) {
+      userFriendlyError = "Code execution timeout (exceeded 5 seconds)";
+    } else if (errorMsg.includes("SyntaxError")) {
+      userFriendlyError = `Syntax error: ${errorMsg}`;
+    } else if (errorMsg.includes("ReferenceError")) {
+      userFriendlyError = `Reference error: ${errorMsg}`;
+    }
+
+    return {
+      language: lang,
+      code,
+      output: null,
+      error: userFriendlyError,
+      status: "error",
+      executionTime,
+    };
   }
 }
 
@@ -283,6 +339,7 @@ export async function executeTooById(
 
 /**
  * Execute a tool by name
+ * Matches by functionName (from provider) or falls back to human-readable name
  */
 export async function executeToolByName(
   toolName: string,
@@ -290,7 +347,11 @@ export async function executeToolByName(
   context: ToolContext
 ): Promise<ToolExecutionResult> {
   const tools = storage.tools.list();
-  const tool = tools.find((t) => t.name === toolName);
+  // Try matching by functionName first (what the LLM provider sends)
+  // Then fall back to human-readable name for backward compatibility
+  const tool = tools.find(
+    (t) => t.functionName === toolName || t.name === toolName
+  );
 
   if (!tool) {
     throw new Error(`Tool not found: ${toolName}`);
@@ -345,7 +406,9 @@ export function initializeEssentialTools(): void {
           },
           timestamp: { type: "string" },
         },
-      }
+      },
+      [],
+      "web_search"
     );
   }
 
@@ -383,7 +446,9 @@ export function initializeEssentialTools(): void {
           size: { type: "number" },
           success: { type: "boolean" },
         },
-      }
+      },
+      [],
+      "file_ops"
     );
   }
 
@@ -417,7 +482,9 @@ export function initializeEssentialTools(): void {
           executionTime: { type: "number" },
           status: { type: "string" },
         },
-      }
+      },
+      [],
+      "code_exec"
     );
   }
 
@@ -448,7 +515,9 @@ export function initializeEssentialTools(): void {
           response: { type: "string" },
           success: { type: "boolean" },
         },
-      }
+      },
+      [],
+      "delegate_task"
     );
   }
 
@@ -476,7 +545,9 @@ export function initializeEssentialTools(): void {
           temperature: { type: "string" },
           condition: { type: "string" },
         },
-      }
+      },
+      [],
+      "get_weather"
     );
   }
 

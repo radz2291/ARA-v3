@@ -388,3 +388,219 @@ export const handleModelsDiscovery: RequestHandler = async (req, res) => {
     return res.json({ models: [] });
   }
 };
+
+/**
+ * Streaming LLM Request Handler
+ * Emits Server-Sent Events for real-time feedback during tool execution
+ */
+export const handleLLMStream: RequestHandler = async (req, res) => {
+  try {
+    const { messages, model, temperature, max_tokens, apiKey, apiUrl, sessionId } =
+      req.body as LLMRequest;
+
+    // Validate required fields
+    if (!messages || messages.length === 0) {
+      return res.status(400).json({ message: "Messages are required" });
+    }
+
+    // Setup SSE response
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    const sendEvent = (data: any) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Get API key and URL from either session config or request body
+    let finalApiKey = apiKey;
+    let finalApiUrl = apiUrl;
+    let finalModel = model;
+
+    if (sessionId) {
+      const config = storage.sessions.getConfig(sessionId);
+      if (config) {
+        finalApiKey = config.apiKey;
+        finalApiUrl = config.apiUrl;
+        finalModel = config.model;
+      }
+    }
+
+    // Validate API key
+    if (!finalApiKey) {
+      sendEvent({ type: "error", message: "API key is required" });
+      return res.end();
+    }
+
+    if (!finalModel) {
+      sendEvent({ type: "error", message: "Model is required" });
+      return res.end();
+    }
+
+    sendEvent({ type: "start", model: finalModel });
+
+    // Use custom URL or default to OpenAI
+    const baseUrl = finalApiUrl || DEFAULT_OPENAI_URL;
+    const isZai = isZaiUrl(baseUrl);
+
+    let endpoint: string;
+    if (isZai) {
+      endpoint = getChatPath(baseUrl);
+    } else {
+      endpoint = `${baseUrl}/chat/completions`;
+    }
+
+    // Prepare request headers
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${finalApiKey}`,
+    };
+
+    const openaiBody: any = {
+      model: finalModel,
+      messages: messages,
+      temperature: temperature || 0.7,
+      max_tokens: max_tokens || 2000,
+    };
+
+    if (req.body.tools) {
+      openaiBody.tools = req.body.tools;
+      openaiBody.tool_choice = req.body.tool_choice || "auto";
+    }
+
+    // Forward request to provider API
+    let providerResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(openaiBody),
+    });
+
+    if (!providerResponse.ok) {
+      const errorText = await providerResponse.text();
+      let errorMessage = `Provider API error: ${providerResponse.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      sendEvent({ type: "error", message: errorMessage });
+      return res.end();
+    }
+
+    // --- RECURSIVE TOOL EXECUTION LOOP WITH STREAMING ---
+    let data = await providerResponse.json();
+    let loopCount = 0;
+    const MAX_LOOPS = 5;
+    const conversationMessages = [...messages];
+
+    while (loopCount < MAX_LOOPS) {
+      const message = data.choices[0]?.message;
+      const toolCalls = message?.tool_calls;
+
+      if (!toolCalls || toolCalls.length === 0) {
+        // No more tool calls - emit final response
+        const finalContent = message?.content || "";
+        if (finalContent) {
+          sendEvent({ type: "response", content: finalContent });
+        }
+        break;
+      }
+
+      sendEvent({ type: "thinking", message: `Executing ${toolCalls.length} tool(s)...` });
+
+      // Add the assistant's tool_calls message to history
+      conversationMessages.push(message);
+
+      // Execute each tool call
+      for (const toolCall of toolCalls) {
+        const toolName = toolCall.function.name;
+        const toolArgs = JSON.parse(toolCall.function.arguments);
+
+        sendEvent({ type: "tool_start", toolName, input: toolArgs });
+
+        try {
+          let output: any;
+          const toolStartTime = Date.now();
+
+          // SPECIAL HANDLING: Delegate Task
+          if (toolName === "delegate_task" || toolName === "Delegate Task") {
+            const { agentId, task } = toolArgs;
+            const targetAgent = storage.agents.get(agentId);
+            if (!targetAgent) {
+              throw new Error(`Target agent not found: ${agentId}`);
+            }
+
+            const subMessages = [
+              { role: "system", content: targetAgent.systemInstructions },
+              { role: "user", content: task }
+            ];
+
+            const subData = await callProvider(endpoint, headers, {
+              ...openaiBody,
+              messages: subMessages,
+              tools: undefined,
+            });
+
+            output = {
+              agentName: targetAgent.name,
+              response: subData.choices[0]?.message?.content || "No response from sub-agent"
+            };
+          } else {
+            // Standard tool execution
+            const result = await executeToolByName(toolName, toolArgs, {});
+            output = result.output || result.error || "Success";
+          }
+
+          const duration = Date.now() - toolStartTime;
+          sendEvent({
+            type: "tool_result",
+            toolName,
+            output,
+            duration
+          });
+
+          // Add tool result to messages
+          conversationMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: typeof output === 'string' ? output : JSON.stringify(output)
+          });
+        } catch (err: any) {
+          console.error(`[LLM Stream] Tool execution failed: ${toolName}`, err);
+          sendEvent({
+            type: "tool_error",
+            toolName,
+            error: err.message
+          });
+
+          conversationMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            name: toolName,
+            content: `Error: ${err.message}`
+          });
+        }
+      }
+
+      // Call LLM again with results
+      console.log(`[LLM Stream] Calling provider again (loop ${loopCount + 1})...`);
+      data = await callProvider(endpoint, headers, {
+        ...openaiBody,
+        messages: conversationMessages,
+      });
+      loopCount++;
+    }
+
+    // Send completion event
+    sendEvent({ type: "complete" });
+    return res.end();
+  } catch (error) {
+    console.error("LLM stream error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    res.write(`data: ${JSON.stringify({ type: "error", message: `Server error: ${errorMessage}` })}\n\n`);
+    return res.end();
+  }
+};

@@ -72,6 +72,7 @@ export interface Agent {
   description: string;
   persona: string; // e.g., "Research Bot", "Code Wizard", etc.
   systemInstructions: string; // Custom system prompt for this agent
+  toolIds: string[]; // IDs of tools assigned to this agent
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;
@@ -95,6 +96,7 @@ export interface Tool {
   name: string;
   description: string;
   type: "web_search" | "file_ops" | "code_exec" | "custom";
+  functionName: string; // Sanitized name for function calling (e.g., "web_search", "file_ops")
   inputSchema: Record<string, unknown>; // JSON Schema for input validation
   outputSchema: Record<string, unknown>; // JSON Schema for output
   assignedAgentIds: string[]; // Which agents can use this tool
@@ -366,7 +368,8 @@ class AgentsStorage {
     name: string,
     description: string,
     persona: string,
-    systemInstructions: string
+    systemInstructions: string,
+    toolIds: string[] = []
   ): Agent {
     const agent: Agent = {
       id: randomUUID(),
@@ -374,6 +377,7 @@ class AgentsStorage {
       description,
       persona,
       systemInstructions,
+      toolIds,
       status: "active",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -621,13 +625,18 @@ class ToolsStorage {
     type: Tool["type"],
     inputSchema: Record<string, unknown>,
     outputSchema: Record<string, unknown>,
-    assignedAgentIds: string[] = []
+    assignedAgentIds: string[] = [],
+    functionName?: string
   ): Tool {
+    // Auto-generate functionName if not provided
+    const generatedFunctionName = functionName || name.replace(/\s+/g, "_").toLowerCase();
+
     const tool: Tool = {
       id: randomUUID(),
       name,
       description,
       type,
+      functionName: generatedFunctionName,
       inputSchema,
       outputSchema,
       assignedAgentIds,
@@ -792,8 +801,9 @@ export const storage = {
       name: string,
       description: string,
       persona: string,
-      systemInstructions: string
-    ) => getAgentsStorage().create(name, description, persona, systemInstructions),
+      systemInstructions: string,
+      toolIds?: string[]
+    ) => getAgentsStorage().create(name, description, persona, systemInstructions, toolIds || []),
     get: (agentId: string) => getAgentsStorage().get(agentId),
     list: () => getAgentsStorage().list(),
     update: (agentId: string, updates: Partial<Omit<Agent, "id" | "createdAt">>) =>
@@ -824,8 +834,9 @@ export const storage = {
       type: Tool["type"],
       inputSchema: Record<string, unknown>,
       outputSchema: Record<string, unknown>,
-      assignedAgentIds?: string[]
-    ) => getToolsStorage().create(name, description, type, inputSchema, outputSchema, assignedAgentIds),
+      assignedAgentIds?: string[],
+      functionName?: string
+    ) => getToolsStorage().create(name, description, type, inputSchema, outputSchema, assignedAgentIds, functionName),
     get: (toolId: string) => getToolsStorage().get(toolId),
     list: () => getToolsStorage().list(),
     listByType: (type: Tool["type"]) => getToolsStorage().listByType(type),

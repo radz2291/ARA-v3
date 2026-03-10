@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
-import { handleLLMRequest, handleModelsDiscovery } from "./routes/llm";
+import { handleLLMRequest, handleLLMStream, handleModelsDiscovery } from "./routes/llm";
 import {
   handleCreateSession,
   handleGetSession,
@@ -66,6 +66,7 @@ export function createServer() {
   app.get("/api/demo", handleDemo);
 
   app.post("/api/llm", handleLLMRequest);
+  app.post("/api/llm/stream", handleLLMStream);
   app.post("/api/llm/models", handleModelsDiscovery);
 
   // Session routes

@@ -161,13 +161,112 @@ export class OpenAIProvider {
   }
 
   /**
-   * Convert tools/functions to OpenAI tool format
+   * Stream response with Server-Sent Events
+   * Emits events for real-time feedback during tool execution
    */
-  static formatToolsForOpenAI(tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>): ToolFunction[] {
+  async streamResponse(
+    messages: LLMMessage[],
+    tools?: ToolFunction[],
+    onEvent?: (event: any) => void
+  ): Promise<string> {
+    if (!this.sessionId && !this.config.apiKey) {
+      throw new Error("API key not configured");
+    }
+
+    try {
+      const requestBody: LLMRequestBody = {
+        messages: messages,
+        model: this.config.model || "gpt-4-turbo",
+        temperature: this.config.temperature ?? 0.7,
+        max_tokens: this.config.maxTokens ?? 2000,
+      };
+
+      if (tools && tools.length > 0) {
+        requestBody.tools = tools;
+        requestBody.tool_choice = "auto";
+      }
+
+      if (this.sessionId) {
+        requestBody.sessionId = this.sessionId;
+      }
+
+      if (this.config.apiKey) {
+        requestBody.apiKey = this.config.apiKey;
+        requestBody.apiUrl = this.config.apiUrl;
+      }
+
+      const response = await fetch("/api/llm/stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `LLM API error: ${response.status}`);
+      }
+
+      let finalContent = "";
+
+      // Handle Server-Sent Events
+      if (!response.body) {
+        throw new Error("Response body is empty");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+
+        // Keep the last incomplete line in buffer
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+
+          try {
+            const eventData = JSON.parse(line.slice(6));
+
+            // Emit event to callback
+            if (onEvent) {
+              onEvent(eventData);
+            }
+
+            // Accumulate response content
+            if (eventData.type === "response") {
+              finalContent += eventData.content || "";
+            }
+          } catch (e) {
+            console.warn("Failed to parse event:", line, e);
+          }
+        }
+      }
+
+      return finalContent;
+    } catch (error) {
+      console.error("LLM stream error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert tools/functions to OpenAI tool format
+   * Uses functionName field if available, otherwise sanitizes the name
+   */
+  static formatToolsForOpenAI(tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown>; functionName?: string }>): ToolFunction[] {
     return tools.map((tool) => ({
       type: "function",
       function: {
-        name: tool.name.replace(/\s+/g, "_").toLowerCase(), // Sanitize name for function calling
+        // Use pre-stored functionName if available, otherwise sanitize on the fly
+        name: tool.functionName || tool.name.replace(/\s+/g, "_").toLowerCase(),
         description: tool.description,
         parameters: tool.inputSchema,
       },

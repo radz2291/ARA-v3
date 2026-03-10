@@ -18,6 +18,7 @@ export const createTool: RequestHandler = (req, res) => {
       inputSchema,
       outputSchema,
       assignedAgentIds,
+      functionName,
     } = req.body;
 
     if (
@@ -46,7 +47,8 @@ export const createTool: RequestHandler = (req, res) => {
       type,
       inputSchema,
       outputSchema,
-      assignedAgentIds || []
+      assignedAgentIds || [],
+      functionName // Pass optional functionName; will auto-generate if not provided
     );
 
     res.json({ success: true, tool });
