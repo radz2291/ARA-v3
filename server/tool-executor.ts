@@ -194,45 +194,58 @@ async function executeCode(
     const context_obj = await isolate.createContext();
 
     // Prepare safe sandbox environment
-    // Only expose safe, read-only APIs
     const jail = context_obj.global;
 
-    // Expose console for logging
-    await jail.set("console", new ivm.ExternalCopy({
-      log: (...args: unknown[]) => console.log("[Sandbox]", ...args),
-      error: (...args: unknown[]) => console.error("[Sandbox]", ...args),
-      warn: (...args: unknown[]) => console.warn("[Sandbox]", ...args),
-      info: (...args: unknown[]) => console.info("[Sandbox]", ...args),
-    }).deref());
+    // We can't safely inject complex Node objects like console directly.
+    // Instead we will inject a simple string-based logger.
+    jail.setSync("global", jail.derefInto());
 
-    // Expose JSON (read-only)
-    await jail.set("JSON", JSON);
-
-    // Expose Math (read-only)
-    await jail.set("Math", Math);
-
-    // Expose Array, Object, String, Number (constructors only)
-    await jail.set("Array", Array);
-    await jail.set("Object", Object);
-    await jail.set("String", String);
-    await jail.set("Number", Number);
-    await jail.set("Boolean", Boolean);
-    await jail.set("Date", Date);
+    // Set up basic environment (JSON and Math are built-in to isolated-vm contexts anyway)
+    // Create a mock console that captures logs
+    await context_obj.eval(`
+      const _logs = [];
+      global.console = {
+        log: (...args) => _logs.push(args.join(' ')),
+        error: (...args) => _logs.push('[ERR] ' + args.join(' ')),
+        warn: (...args) => _logs.push('[WARN] ' + args.join(' ')),
+      };
+      
+      // Wrapper to catch the logs and the final result
+      global._runCode = function() {
+        let _result;
+        try {
+          // Eval the user code
+          _result = eval(${JSON.stringify(code)});
+        } catch (e) {
+          throw e;
+        }
+        return JSON.stringify({ result: _result, logs: _logs });
+      }
+    `);
 
     // Execute code with 5-second timeout
-    const result = await context_obj.eval(code, {
+    const sandboxResult = await context_obj.eval(`global._runCode()`, {
       timeout: 5000,
       filename: "sandbox.js",
     });
 
     const executionTime = Date.now() - startTime;
 
-    // Try to serialize the result
-    let output: unknown;
+    // Parse the result safely
+    let parsedResult;
     try {
-      output = JSON.stringify(result);
+      parsedResult = JSON.parse(sandboxResult as string);
     } catch {
-      output = String(result);
+      parsedResult = { result: sandboxResult, logs: [] };
+    }
+
+    let output = parsedResult.result;
+
+    // If output is undefined but there are logs, return the logs as output
+    if (output === undefined && parsedResult.logs.length > 0) {
+      output = parsedResult.logs.join('\\n');
+    } else if (parsedResult.logs.length > 0) {
+      output = `${parsedResult.logs.join('\\n')}\\n\\n=> ${output}`;
     }
 
     return {
@@ -348,13 +361,18 @@ export async function executeToolByName(
 ): Promise<ToolExecutionResult> {
   const tools = storage.tools.list();
   // Try matching by functionName first (what the LLM provider sends)
-  // Then fall back to human-readable name for backward compatibility
+  // Then fall back to human-readable name, or normalized snake_case name
+  const normalizedName = toolName.toLowerCase().replace(/_/g, " ");
+
   const tool = tools.find(
-    (t) => t.functionName === toolName || t.name === toolName
+    (t) =>
+      t.functionName === toolName ||
+      t.name === toolName ||
+      t.name.toLowerCase() === normalizedName
   );
 
   if (!tool) {
-    throw new Error(`Tool not found: ${toolName}`);
+    throw new Error(`Tool not found at execution layer: ${toolName}`);
   }
 
   return executeTool(tool, input, context);

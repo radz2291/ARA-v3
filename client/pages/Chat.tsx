@@ -10,6 +10,7 @@ import {
   createLLMProvider,
   configStore,
   LLMConfig,
+  OpenAIProvider,
 } from "@/lib/llm-service";
 import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/contexts/SessionContext";
@@ -32,6 +33,7 @@ interface Agent {
   persona: string;
   systemInstructions: string;
   status: "active" | "inactive";
+  toolIds?: string[];
 }
 
 interface Workspace {
@@ -82,6 +84,7 @@ export default function Chat() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [workspaceAgents, setWorkspaceAgents] = useState<Agent[]>([]);
+  const [agentTools, setAgentTools] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load configuration and conversations on mount
@@ -141,6 +144,16 @@ export default function Chat() {
       if (response.ok) {
         const agentData = await response.json();
         setAgent(agentData);
+
+        try {
+          const toolsResponse = await fetch(`/api/agents/${agentId}/tools`);
+          if (toolsResponse.ok) {
+            const toolsData = await toolsResponse.json();
+            setAgentTools(toolsData.tools || []);
+          }
+        } catch (e) {
+          console.error("Failed to load agent tools", e);
+        }
       }
     } catch (error) {
       console.error("Error loading agent:", error);
@@ -158,7 +171,11 @@ export default function Chat() {
       );
       if (response.ok) {
         const data = await response.json();
-        setMessages(data.messages || []);
+        const loadedMessages = (data.messages || []).map((m: any, idx: number) => ({
+          ...m,
+          id: m.id || `msg-${Date.now()}-${idx}`
+        }));
+        setMessages(loadedMessages);
       }
     } catch (error) {
       console.error("Error loading conversation:", error);
@@ -204,8 +221,17 @@ export default function Chat() {
         timestamp: new Date().toISOString(),
       };
 
-      // Immediately update UI with user message
-      setMessages((prev) => [...prev, userMessage]);
+      const assistantMessageId = (Date.now() + 1).toString();
+      const initialAssistantMessage: Message = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        executionSteps: [],
+      };
+
+      // Immediately update UI with user message and empty assistant message
+      setMessages((prev) => [...prev, userMessage, initialAssistantMessage]);
 
       // Parallelize: Start user message save and LLM call concurrently
       const isFirstMessage = messages.length === 0;
@@ -247,20 +273,73 @@ export default function Chat() {
         content: userContent,
       });
 
-      const llmPromise = provider.generateResponse(llmMessages);
+      const formattedTools = agentTools.length > 0
+        ? OpenAIProvider.formatToolsForOpenAI(agentTools)
+        : undefined;
 
-      // Wait for LLM response (don't wait for user save)
-      const response = await llmPromise;
+      const llmPromise = provider.streamResponse(llmMessages, formattedTools, workspaceId || undefined, (event) => {
+        if (event.type === "response") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, content: (m.content || "") + (event.content || "") }
+                : m
+            )
+          );
+        } else if (event.type === "tool_start") {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id === assistantMessageId) {
+                const steps = m.executionSteps || [];
+                return {
+                  ...m,
+                  executionSteps: [
+                    ...steps,
+                    {
+                      tool: event.toolName,
+                      status: "executing",
+                      timestamp: new Date().toISOString(),
+                    },
+                  ],
+                };
+              }
+              return m;
+            })
+          );
 
-      // Create assistant message and update UI optimistically
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: response.content,
-        timestamp: new Date().toISOString(),
-        executionSteps: (response as any).executionSteps, // Cast to any to access the new field
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+
+        } else if (event.type === "tool_result" || event.type === "tool_error") {
+          const isError = event.type === "tool_error";
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id === assistantMessageId) {
+                const steps = [...(m.executionSteps || [])];
+                const lastIdx = [...steps]
+                  .reverse()
+                  .findIndex((s) => s.tool === event.toolName && s.status === "executing");
+
+                if (lastIdx !== -1) {
+                  const actualIdx = steps.length - 1 - lastIdx;
+                  steps[actualIdx] = {
+                    ...steps[actualIdx],
+                    status: isError ? "failed" : "completed",
+                    result: event.result,
+                    error: event.error,
+                    timestamp: new Date().toISOString(),
+                  };
+                  return { ...m, executionSteps: steps };
+                }
+              }
+              return m;
+            })
+          );
+
+
+        }
+      });
+
+      // Wait for stream to finish
+      const finalContent = await llmPromise;
 
       // Background: Auto-rename conversation if first message (fire-and-forget)
       if (isFirstMessage) {
@@ -274,24 +353,28 @@ export default function Chat() {
       }
 
       // Background: Save assistant message (fire-and-forget)
-      fetch(
-        `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            role: "assistant",
-            content: response.content,
-            executionSteps: (response as any).executionSteps,
-          }),
-        }
-      ).catch((error) => {
-        console.error("Failed to save assistant message:", error);
-        toast({
-          title: "Warning",
-          description: "Failed to save assistant response. Please refresh to verify.",
-          variant: "destructive",
+      setMessages((currentMessages) => {
+        const finalAssistantMessage = currentMessages.find(m => m.id === assistantMessageId);
+        fetch(
+          `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              role: "assistant",
+              content: finalContent,
+              executionSteps: finalAssistantMessage?.executionSteps || [],
+            }),
+          }
+        ).catch((error) => {
+          console.error("Failed to save assistant message:", error);
+          toast({
+            title: "Warning",
+            description: "Failed to save assistant response. Please refresh to verify.",
+            variant: "destructive",
+          });
         });
+        return currentMessages;
       });
 
       // Ensure user save completes
@@ -370,7 +453,7 @@ export default function Chat() {
       <div className="flex h-full bg-background dark:bg-background">
 
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0 border-r border-border dark:border-border">
           {/* Header */}
           <div className="border-b border-border dark:border-border px-6 py-4">
             <div className="flex items-center justify-between mb-2">
@@ -477,7 +560,26 @@ export default function Chat() {
                         : "bg-card dark:bg-card text-foreground dark:text-foreground border border-border dark:border-border"
                     )}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.content ? (
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    ) : (
+                      message.role === "assistant" &&
+                      (!message.executionSteps || message.executionSteps.length === 0) &&
+                      isLoading && (
+                        <div className="flex gap-1 py-1">
+                          <div className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce" />
+                          <div
+                            className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          />
+                          <div
+                            className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          />
+                        </div>
+                      )
+                    )}
+
                     {message.executionSteps && message.executionSteps.length > 0 && (
                       <ToolExecutionSteps steps={message.executionSteps} />
                     )}
@@ -498,29 +600,6 @@ export default function Chat() {
                   )}
                 </div>
               ))
-            )}
-
-            {(isLoading || isSavingMessage) && (
-              <div className="flex gap-3 justify-start animate-slide-in">
-                <div className="w-8 h-8 rounded-full bg-primary dark:bg-primary flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-primary-foreground dark:text-primary-foreground">
-                    A
-                  </span>
-                </div>
-                <div className="bg-card dark:bg-card border border-border dark:border-border rounded-lg px-4 py-3">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce" />
-                    <div
-                      className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-                      style={{ animationDelay: "0.1s" }}
-                    />
-                    <div
-                      className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-                      style={{ animationDelay: "0.2s" }}
-                    />
-                  </div>
-                </div>
-              </div>
             )}
 
             <div ref={messagesEndRef} />

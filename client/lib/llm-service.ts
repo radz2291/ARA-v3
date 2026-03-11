@@ -67,6 +67,7 @@ export interface LLMRequestBody {
   sessionId?: string; // Use server-stored config if provided
   tools?: ToolFunction[]; // Function definitions for tool calling
   tool_choice?: string; // "auto", "required", or specific function name
+  workspaceId?: string; // Pass the active workspace ID to the server
 }
 
 export interface DiscoveredModel {
@@ -167,6 +168,7 @@ export class OpenAIProvider {
   async streamResponse(
     messages: LLMMessage[],
     tools?: ToolFunction[],
+    workspaceId?: string,
     onEvent?: (event: any) => void
   ): Promise<string> {
     if (!this.sessionId && !this.config.apiKey) {
@@ -188,6 +190,10 @@ export class OpenAIProvider {
 
       if (this.sessionId) {
         requestBody.sessionId = this.sessionId;
+      }
+
+      if (workspaceId) {
+        requestBody.workspaceId = workspaceId;
       }
 
       if (this.config.apiKey) {

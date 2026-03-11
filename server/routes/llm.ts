@@ -12,6 +12,7 @@ interface LLMRequest {
   sessionId?: string; // Use server-stored config
   tools?: any[]; // Function definitions for tool calling
   tool_choice?: string | any;
+  workspaceId?: string; // Context for file operations
 }
 
 interface ModelsRequest {
@@ -411,6 +412,9 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
 
     const sendEvent = (data: any) => {
       res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (typeof (res as any).flush === "function") {
+        (res as any).flush();
+      }
     };
 
     // Get API key and URL from either session config or request body
@@ -469,54 +473,173 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
       openaiBody.tool_choice = req.body.tool_choice || "auto";
     }
 
-    // Forward request to provider API
-    let providerResponse = await fetch(endpoint, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(openaiBody),
-    });
-
-    if (!providerResponse.ok) {
-      const errorText = await providerResponse.text();
-      let errorMessage = `Provider API error: ${providerResponse.status}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-      sendEvent({ type: "error", message: errorMessage });
-      return res.end();
-    }
-
     // --- RECURSIVE TOOL EXECUTION LOOP WITH STREAMING ---
-    let data = await providerResponse.json();
     let loopCount = 0;
     const MAX_LOOPS = 5;
     const conversationMessages = [...messages];
 
     while (loopCount < MAX_LOOPS) {
-      const message = data.choices[0]?.message;
-      const toolCalls = message?.tool_calls;
+      const currentBody = {
+        ...openaiBody,
+        messages: conversationMessages,
+        stream: true,
+      };
 
-      if (!toolCalls || toolCalls.length === 0) {
-        // No more tool calls - emit final response
-        const finalContent = message?.content || "";
-        if (finalContent) {
-          sendEvent({ type: "response", content: finalContent });
+      console.log("[LLM Debug] Fetching endpoint:", endpoint);
+      console.log("[LLM Debug] Payload messages:", conversationMessages.length);
+
+      let providerResponse = await fetch(endpoint, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(currentBody),
+      });
+
+      console.log("[LLM Debug] Provider Response Status:", providerResponse.status);
+
+      if (!providerResponse.ok) {
+        const errorText = await providerResponse.text();
+        console.error("[LLM Debug] Provider Error:", errorText);
+        sendEvent({ type: "error", message: `Provider API error: ${providerResponse.status} - ${errorText}` });
+        return res.end();
+      }
+
+      sendEvent({ type: "debug", message: `Provider Fetch OK. Status: ${providerResponse.status}. Headers: ${JSON.stringify(Object.fromEntries(providerResponse.headers.entries()))}` });
+
+      let contentAccumulator = "";
+      let toolCalls: any[] = [];
+
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      // Ensure body exists
+      if (!providerResponse.body) {
+        sendEvent({ type: "error", message: "Empty stream response from provider" });
+        return res.end();
+      }
+
+      // Read from the provider stream chunks
+      if (!providerResponse.body) {
+        sendEvent({ type: "error", message: "Empty stream response from provider" });
+        return res.end();
+      }
+
+      const reader = providerResponse.body.getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (!trimmed.startsWith("data: ")) continue;
+
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            if (data.choices && data.choices[0].delta) {
+              const delta = data.choices[0].delta;
+
+              if (delta.reasoning_content) {
+                contentAccumulator += delta.reasoning_content;
+                sendEvent({ type: "response", content: delta.reasoning_content });
+              }
+
+              if (delta.content) {
+                // DEBUG: console.log("Extracted content:", delta.content);
+                contentAccumulator += delta.content;
+                // Emit content immediately to UI
+                sendEvent({ type: "response", content: delta.content });
+              }
+
+              if (delta.tool_calls) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index;
+                  if (!toolCalls[idx]) {
+                    toolCalls[idx] = {
+                      id: tc.id || `call_${Date.now()}_${idx}`,
+                      type: "function",
+                      function: { name: tc.function?.name || "", arguments: "" }
+                    };
+                  }
+                  if (tc.function?.arguments) {
+                    toolCalls[idx].function.arguments += tc.function.arguments;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[LLM Stream] failed to parse SSE chunk:", buffer.trim());
+          }
         }
+      }
+
+      // After stream completes, flush remaining buffer
+      if (buffer.trim() && buffer.trim().startsWith("data: ") && buffer.trim() !== "data: [DONE]") {
+        try {
+          const data = JSON.parse(buffer.trim().slice(6));
+          if (data.choices && data.choices[0].delta) {
+            const delta = data.choices[0].delta;
+
+            if (delta.reasoning_content) {
+              contentAccumulator += delta.reasoning_content;
+              sendEvent({ type: "response", content: delta.reasoning_content });
+            }
+
+            if (delta.content) {
+              contentAccumulator += delta.content;
+              // Emit content immediately to UI
+              sendEvent({ type: "response", content: delta.content });
+            }
+
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index;
+                if (!toolCalls[idx]) {
+                  toolCalls[idx] = {
+                    id: tc.id || `call_${Date.now()}_${idx}`,
+                    type: "function",
+                    function: { name: tc.function?.name || "", arguments: "" }
+                  };
+                }
+                if (tc.function?.arguments) {
+                  toolCalls[idx].function.arguments += tc.function.arguments;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[LLM Stream] failed to parse SSE chunk in final buffer:", buffer.trim());
+        }
+      }
+
+      // Check if any tool calls were accumulated
+      const validToolCalls = toolCalls.filter(Boolean);
+
+      if (validToolCalls.length === 0) {
+        // No tools, stream is done. Break loop.
         break;
       }
 
-      sendEvent({ type: "thinking", message: `Executing ${toolCalls.length} tool(s)...` });
+      sendEvent({ type: "thinking", message: `Executing ${validToolCalls.length} tool(s)...` });
 
       // Add the assistant's tool_calls message to history
-      conversationMessages.push(message);
+      const messageToPush: any = { role: "assistant", tool_calls: validToolCalls };
+      if (contentAccumulator) messageToPush.content = contentAccumulator;
+      conversationMessages.push(messageToPush);
 
       // Execute each tool call
-      for (const toolCall of toolCalls) {
+      for (const toolCall of validToolCalls) {
         const toolName = toolCall.function.name;
-        const toolArgs = JSON.parse(toolCall.function.arguments);
+        let toolArgs = {};
+        try {
+          toolArgs = JSON.parse(toolCall.function.arguments || "{}");
+        } catch (e) {
+          console.error("Invalid JSON inside tool arguments:", toolCall.function.arguments);
+        }
 
         sendEvent({ type: "tool_start", toolName, input: toolArgs });
 
@@ -526,7 +649,7 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
 
           // SPECIAL HANDLING: Delegate Task
           if (toolName === "delegate_task" || toolName === "Delegate Task") {
-            const { agentId, task } = toolArgs;
+            const { agentId, task } = toolArgs as any;
             const targetAgent = storage.agents.get(agentId);
             if (!targetAgent) {
               throw new Error(`Target agent not found: ${agentId}`);
@@ -541,6 +664,7 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
               ...openaiBody,
               messages: subMessages,
               tools: undefined,
+              stream: false, // Wait for sub-agent fully
             });
 
             output = {
@@ -549,7 +673,12 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
             };
           } else {
             // Standard tool execution
-            const result = await executeToolByName(toolName, toolArgs, {});
+            const contextOptions = {
+              workspaceId: req.body.workspaceId,
+              agentId: req.body.agentId,
+              sessionId: req.body.sessionId || sessionId
+            };
+            const result = await executeToolByName(toolName, toolArgs, contextOptions);
             output = result.output || result.error || "Success";
           }
 
@@ -584,12 +713,7 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
         }
       }
 
-      // Call LLM again with results
       console.log(`[LLM Stream] Calling provider again (loop ${loopCount + 1})...`);
-      data = await callProvider(endpoint, headers, {
-        ...openaiBody,
-        messages: conversationMessages,
-      });
       loopCount++;
     }
 
