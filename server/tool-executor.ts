@@ -7,7 +7,6 @@
 
 import { storage, Tool } from "./storage";
 import { randomUUID } from "crypto";
-import ivm from "isolated-vm";
 
 /**
  * Tool execution result
@@ -161,8 +160,8 @@ async function executeFileOps(
 
 /**
  * Code Execution Tool Implementation
- * Uses isolated-vm for safe V8 sandbox execution
- * Provides industry-standard isolation with strict resource limits
+ * Uses isolated-vm for safe V8 sandbox execution when available
+ * Falls back to safe pattern matching and restricted eval
  */
 async function executeCode(
   input: Record<string, unknown>,
@@ -186,6 +185,74 @@ async function executeCode(
 
   const startTime = Date.now();
 
+  // Check for dangerous operations first
+  const dangerousPatterns = [
+    /\brequire\s*\(/g,
+    /\bimport\s+/g,
+    /\beval\s*\(/g,
+    /\bFunction\s*\(/g,
+    /\bexec\s*\(/g,
+    /\bprocess\s*\./g,
+    /\brequire\.resolve/g,
+    /\bglobal\s*\./g,
+    /\b__dirname\b/g,
+    /\b__filename\b/g,
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(code)) {
+      return {
+        language: lang,
+        code,
+        output: null,
+        error: "Dangerous operations (require, import, eval, process) are not allowed",
+        status: "error",
+        executionTime: Date.now() - startTime,
+      };
+    }
+  }
+
+  try {
+    // Try to use isolated-vm if available
+    let ivm: any;
+    try {
+      ivm = await import("isolated-vm");
+    } catch {
+      console.warn("[Code Execution] isolated-vm not available, using restricted mode");
+      ivm = null;
+    }
+
+    if (ivm) {
+      // Use isolated-vm sandbox
+      return await executeCodeWithIVM(code, lang, startTime, ivm);
+    } else {
+      // Fallback: Use restricted eval with timeout simulation
+      return executeCodeRestricted(code, lang, startTime);
+    }
+  } catch (error: any) {
+    const executionTime = Date.now() - startTime;
+    const errorMsg = error.message || String(error);
+
+    return {
+      language: lang,
+      code,
+      output: null,
+      error: errorMsg,
+      status: "error",
+      executionTime,
+    };
+  }
+}
+
+/**
+ * Execute code using isolated-vm sandbox
+ */
+async function executeCodeWithIVM(
+  code: string,
+  lang: string,
+  startTime: number,
+  ivm: any
+): Promise<unknown> {
   try {
     // Create a new isolate with memory limits (128MB)
     const isolate = new ivm.Isolate({ memoryLimit: 128 });
@@ -196,56 +263,38 @@ async function executeCode(
     // Prepare safe sandbox environment
     const jail = context_obj.global;
 
-    // We can't safely inject complex Node objects like console directly.
-    // Instead we will inject a simple string-based logger.
-    jail.setSync("global", jail.derefInto());
+    // Expose console for logging
+    await jail.set("console", new ivm.ExternalCopy({
+      log: (...args: unknown[]) => console.log("[Sandbox]", ...args),
+      error: (...args: unknown[]) => console.error("[Sandbox]", ...args),
+      warn: (...args: unknown[]) => console.warn("[Sandbox]", ...args),
+      info: (...args: unknown[]) => console.info("[Sandbox]", ...args),
+    }).deref());
 
-    // Set up basic environment (JSON and Math are built-in to isolated-vm contexts anyway)
-    // Create a mock console that captures logs
-    await context_obj.eval(`
-      const _logs = [];
-      global.console = {
-        log: (...args) => _logs.push(args.join(' ')),
-        error: (...args) => _logs.push('[ERR] ' + args.join(' ')),
-        warn: (...args) => _logs.push('[WARN] ' + args.join(' ')),
-      };
-      
-      // Wrapper to catch the logs and the final result
-      global._runCode = function() {
-        let _result;
-        try {
-          // Eval the user code
-          _result = eval(${JSON.stringify(code)});
-        } catch (e) {
-          throw e;
-        }
-        return JSON.stringify({ result: _result, logs: _logs });
-      }
-    `);
+    // Expose safe built-ins
+    await jail.set("JSON", JSON);
+    await jail.set("Math", Math);
+    await jail.set("Array", Array);
+    await jail.set("Object", Object);
+    await jail.set("String", String);
+    await jail.set("Number", Number);
+    await jail.set("Boolean", Boolean);
+    await jail.set("Date", Date);
 
     // Execute code with 5-second timeout
-    const sandboxResult = await context_obj.eval(`global._runCode()`, {
+    const result = await context_obj.eval(code, {
       timeout: 5000,
       filename: "sandbox.js",
     });
 
     const executionTime = Date.now() - startTime;
 
-    // Parse the result safely
-    let parsedResult;
+    // Try to serialize the result
+    let output: unknown;
     try {
-      parsedResult = JSON.parse(sandboxResult as string);
+      output = JSON.stringify(result);
     } catch {
-      parsedResult = { result: sandboxResult, logs: [] };
-    }
-
-    let output = parsedResult.result;
-
-    // If output is undefined but there are logs, return the logs as output
-    if (output === undefined && parsedResult.logs.length > 0) {
-      output = parsedResult.logs.join('\\n');
-    } else if (parsedResult.logs.length > 0) {
-      output = `${parsedResult.logs.join('\\n')}\\n\\n=> ${output}`;
+      output = String(result);
     }
 
     return {
@@ -259,7 +308,6 @@ async function executeCode(
     const executionTime = Date.now() - startTime;
     const errorMsg = error.message || String(error);
 
-    // Provide helpful error messages
     let userFriendlyError = errorMsg;
     if (errorMsg.includes("timeout")) {
       userFriendlyError = "Code execution timeout (exceeded 5 seconds)";
@@ -276,6 +324,82 @@ async function executeCode(
       error: userFriendlyError,
       status: "error",
       executionTime,
+    };
+  }
+}
+
+/**
+ * Execute code with restricted eval (fallback mode)
+ * When isolated-vm is not available, use restricted eval with safety checks
+ */
+function executeCodeRestricted(
+  code: string,
+  lang: string,
+  startTime: number
+): unknown {
+  try {
+    // Create a restricted scope
+    const scope = {
+      console,
+      JSON,
+      Math,
+      Array,
+      Object,
+      String,
+      Number,
+      Boolean,
+      Date,
+      // Prevent access to dangerous globals
+      require: undefined,
+      module: undefined,
+      exports: undefined,
+      global: undefined,
+      process: undefined,
+      __dirname: undefined,
+      __filename: undefined,
+    };
+
+    // Use Function constructor with restricted scope (safer than direct eval)
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(...Object.keys(scope), `"use strict"; return (${code})`);
+    const result = fn(...Object.values(scope));
+
+    const executionTime = Date.now() - startTime;
+
+    let output: unknown;
+    try {
+      output = JSON.stringify(result);
+    } catch {
+      output = String(result);
+    }
+
+    return {
+      language: lang,
+      code,
+      output,
+      status: "success",
+      executionTime,
+      mode: "restricted",
+    };
+  } catch (error: any) {
+    const executionTime = Date.now() - startTime;
+    const errorMsg = error.message || String(error);
+
+    let userFriendlyError = errorMsg;
+    if (errorMsg.includes("SyntaxError")) {
+      userFriendlyError = `Syntax error: ${errorMsg}`;
+    } else if (errorMsg.includes("ReferenceError")) {
+      userFriendlyError = `Reference error: ${errorMsg}`;
+    }
+
+    return {
+      language: lang,
+      code,
+      output: null,
+      error: userFriendlyError,
+      status: "error",
+      executionTime,
+      mode: "restricted",
     };
   }
 }
@@ -361,18 +485,13 @@ export async function executeToolByName(
 ): Promise<ToolExecutionResult> {
   const tools = storage.tools.list();
   // Try matching by functionName first (what the LLM provider sends)
-  // Then fall back to human-readable name, or normalized snake_case name
-  const normalizedName = toolName.toLowerCase().replace(/_/g, " ");
-
+  // Then fall back to human-readable name for backward compatibility
   const tool = tools.find(
-    (t) =>
-      t.functionName === toolName ||
-      t.name === toolName ||
-      t.name.toLowerCase() === normalizedName
+    (t) => t.functionName === toolName || t.name === toolName
   );
 
   if (!tool) {
-    throw new Error(`Tool not found at execution layer: ${toolName}`);
+    throw new Error(`Tool not found: ${toolName}`);
   }
 
   return executeTool(tool, input, context);

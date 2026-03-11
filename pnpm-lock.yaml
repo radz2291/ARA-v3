@@ -14,6 +14,9 @@ importers:
       express:
         specifier: ^5.1.0
         version: 5.1.0
+      isolated-vm:
+        specifier: ^6.1.0
+        version: 6.1.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -2044,6 +2047,10 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
+  isolated-vm@6.1.0:
+    resolution: {integrity: sha512-bvKZsV3yM2RqztVCb4cf6pemNdNRtjwQJp311ydT52gTfugIGTI+uoidKjN+KBqDkCQxCZ2TD/HGs0NuWjhfuw==}
+    engines: {node: '>=22.0.0'}
+
   its-fine@1.2.5:
     resolution: {integrity: sha512-fXtDA0X0t0eBYAGLVM5YsgJGsJ5jEmqZEPrGbzdf5awjv0xE7nqv3TVnvtUF060Tkes15DbDAKW/I48vsb6SyA==}
     peerDependencies:
@@ -2178,6 +2185,10 @@ packages:
     peerDependencies:
       react: ^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc
       react-dom: ^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc
+
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
+    hasBin: true
 
   node-releases@2.0.19:
     resolution: {integrity: sha512-xxOWJsBKtzAq7DY0J+DTzuz58K8e7sJbdgwkbMWQe8UYB6ekmsQ45q0M/tJDsGaZmbC+l7n57UV8Hl5tHxO9uw==}
@@ -4688,6 +4699,10 @@ snapshots:
 
   isexe@2.0.0: {}
 
+  isolated-vm@6.1.0:
+    dependencies:
+      node-gyp-build: 4.8.4
+
   its-fine@1.2.5(@types/react@18.3.23)(react@18.3.1):
     dependencies:
       '@types/react-reconciler': 0.28.9(@types/react@18.3.23)
@@ -4797,6 +4812,8 @@ snapshots:
     dependencies:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
+
+  node-gyp-build@4.8.4: {}
 
   node-releases@2.0.19: {}
 
