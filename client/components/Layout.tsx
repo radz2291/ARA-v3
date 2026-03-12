@@ -4,6 +4,7 @@ import { Menu, X, Plus, Settings, MessageSquare, Bot, Briefcase, Loader2 } from 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/contexts/SessionContext";
+import { useConversationStore } from "@/contexts/ConversationStore";
 import { Edit2, Trash2, Check } from "lucide-react";
 
 interface LayoutProps {
@@ -20,8 +21,8 @@ export const Layout = ({ children }: LayoutProps) => {
     createNewConversation,
     deleteConversation,
     renameConversation,
-    streamingConversationId,
   } = useSession();
+  const { streamingIds } = useConversationStore();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -183,7 +184,7 @@ export const Layout = ({ children }: LayoutProps) => {
                       ) : (
                         <span className="flex items-center gap-1.5 min-w-0 pr-8">
                           <span className="text-sm truncate">{conv.title}</span>
-                          {streamingConversationId === conv.id && conv.id !== currentConversationId && (
+                          {streamingIds.has(conv.id) && conv.id !== currentConversationId && (
                             <Loader2 className="w-3 h-3 shrink-0 animate-spin text-primary" />
                           )}
                         </span>

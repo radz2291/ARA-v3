@@ -37,7 +37,9 @@ interface SessionContextType {
   regenerateMessage: (messageId: string) => Promise<string | null>;
   loadBranches: () => Promise<void>;
   // Background streaming
+  /** @deprecated Use ConversationStore.streamingIds instead */
   streamingConversationId: string | null;
+  /** @deprecated Use ConversationStore.startStream instead */
   setStreamingConversationId: (id: string | null) => void;
 }
 
@@ -57,7 +59,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
   const [currentBranchId, setCurrentBranchId] = useState<string | null>(null);
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [branchMessageIds, setBranchMessageIds] = useState<Record<string, string[]>>({});
-  // Background streaming
+  // Background streaming (kept for backward compat; UI now reads ConversationStore.streamingIds)
   const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
 
   /**
