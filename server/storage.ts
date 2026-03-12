@@ -419,8 +419,15 @@ class ConversationsStorage {
     const branches = Object.keys(conversation.branches || {});
     const currentBranch = conversation.currentBranchId || "default";
 
-    // Always include "default" and current branch
-    const uniqueBranches = new Set([currentBranch, "default", ...branches]);
+    // Include current branch + all saved branches
+    const uniqueBranches = new Set([currentBranch, ...branches]);
+    // Only include "default" if it has messages or is the current branch
+    if (
+      currentBranch === "default" ||
+      (conversation.branches?.["default"]?.length ?? 0) > 0
+    ) {
+      uniqueBranches.add("default");
+    }
     return Array.from(uniqueBranches);
   }
 
@@ -459,6 +466,22 @@ class ConversationsStorage {
     conversation.updatedAt = new Date().toISOString();
     this.debouncedSave();
     return conversation.messages[messageIndex];
+  }
+
+  /**
+   * Slice conversation messages to keep only messages up to (but not including)
+   * the given index, then persist. Used by edit and regenerate to ensure the
+   * truncated state is saved even if no further addMessage call follows.
+   */
+  truncateMessages(conversationId: string, keepUpToIndex: number): Conversation {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+    conversation.messages = conversation.messages.slice(0, keepUpToIndex);
+    conversation.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return conversation;
   }
 }
 
@@ -956,6 +979,8 @@ export const storage = {
       getConversationsStorage().deleteBranch(conversationId, branchId),
     updateMessage: (conversationId: string, messageId: string, updates: Partial<Message>) =>
       getConversationsStorage().updateMessage(conversationId, messageId, updates),
+    truncateMessages: (conversationId: string, keepUpToIndex: number) =>
+      getConversationsStorage().truncateMessages(conversationId, keepUpToIndex),
   },
   agents: {
     create: (

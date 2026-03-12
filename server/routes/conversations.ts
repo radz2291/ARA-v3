@@ -464,10 +464,8 @@ export const handleEditMessage: RequestHandler = (req, res) => {
     // Update the message with new content
     storage.conversations.updateMessage(conversationId, messageId, { content });
 
-    // Remove all messages after this one (since we're editing mid-conversation)
-    const updatedConversation = storage.conversations.get(conversationId)!;
-    updatedConversation.messages = updatedConversation.messages.slice(0, messageIndex + 1);
-    updatedConversation.updatedAt = new Date().toISOString();
+    // Remove all messages after this one in the new branch
+    const updatedConversation = storage.conversations.truncateMessages(conversationId, messageIndex + 1);
 
     return res.json({
       branchId: newBranchId,
@@ -530,9 +528,7 @@ export const handleRegenerateMessage: RequestHandler = (req, res) => {
     storage.conversations.switchBranch(conversationId, newBranchId);
 
     // Remove the old assistant message and all following messages
-    const updatedConversation = storage.conversations.get(conversationId)!;
-    updatedConversation.messages = updatedConversation.messages.slice(0, messageIndex);
-    updatedConversation.updatedAt = new Date().toISOString();
+    const updatedConversation = storage.conversations.truncateMessages(conversationId, messageIndex);
 
     return res.json({
       branchId: newBranchId,

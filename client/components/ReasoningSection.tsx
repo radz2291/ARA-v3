@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChevronDown, ChevronUp, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -9,15 +9,21 @@ interface ReasoningSectionProps {
 
 export function ReasoningSection({ reasoning, isStreaming }: ReasoningSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const wasStreamingRef = useRef(false);
 
-  // Auto-expand while streaming reasoning, auto-collapse when done
+  // Auto-expand when stream starts; auto-collapse only when stream ends
   useEffect(() => {
-    if (isStreaming && !reasoning) {
+    if (isStreaming && !wasStreamingRef.current) {
+      // Stream just started — expand to show thinking
       setIsExpanded(true);
-    } else if (!isStreaming && reasoning) {
+      wasStreamingRef.current = true;
+    } else if (!isStreaming && wasStreamingRef.current) {
+      // Stream just ended — collapse (reasoning is now complete)
       setIsExpanded(false);
+      wasStreamingRef.current = false;
     }
-  }, [isStreaming, !!reasoning]);
+  }, [isStreaming]);
+
 
   if (!reasoning && !isStreaming) return null;
 

@@ -117,8 +117,14 @@ export default function Chat() {
   }>({ content: "", reasoning: "", steps: [] });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Track the conversation ID that is currently streaming (to guard setMessages calls)
+  // Track the conversation ID that is currently streaming
   const streamingConvIdRef = useRef<string | null>(null);
+
+  // Per-conversation message cache — preserves in-flight streaming state across navigation
+  const messagesCacheRef = useRef<Record<string, Message[]>>({});
+
+  // Track which conversation currently 'owns' the messages state to avoid cache corruption during navigation
+  const messagesOwnerIdRef = useRef<string | null>(null);
 
   // Load configuration on mount
   useEffect(() => {
@@ -134,12 +140,17 @@ export default function Chat() {
     }
   }, [urlConversationId, contextConversationId]);
 
-  // When conversation changes, clear streaming ref so safeUpdateMessage stops affecting
-  // the new conversation's messages — but do NOT abort the stream.
-  // This allows background streaming to continue while the user browses.
+  // Sync messages → cache whenever messages or active conversation changes.
+  // We only sync if the messages state currently 'belongs' to the active conversation.
   useEffect(() => {
-    streamingConvIdRef.current = null;
-  }, [currentConversationId]);
+    if (currentConversationId && messagesOwnerIdRef.current === currentConversationId) {
+      messagesCacheRef.current[currentConversationId] = messages;
+    }
+  }, [messages, currentConversationId]);
+
+  // NOTE: We intentionally do NOT reset streamingConvIdRef here on conversation change.
+  // The stream's finally{} block clears it when the stream truly ends.
+  // Resetting it early would block the final save + ID sync from completing.
 
   // Load workspace if workspaceId is provided
   useEffect(() => {
@@ -198,6 +209,19 @@ export default function Chat() {
   /** Load messages for the current conversation; returns the loaded array */
   const loadConversationMessages = useCallback(async (): Promise<Message[]> => {
     if (!currentConversationId || !sessionId) return [];
+
+    // If this conversation is actively streaming in background, restore from
+    // the in-memory cache rather than hitting the server (which has incomplete state).
+    if (
+      streamingConvIdRef.current === currentConversationId &&
+      (messagesCacheRef.current[currentConversationId]?.length ?? 0) > 0
+    ) {
+      const cached = messagesCacheRef.current[currentConversationId];
+      setMessages(cached);
+      messagesOwnerIdRef.current = currentConversationId;
+      return cached;
+    }
+
     setIsLoadingConversation(true);
     try {
       const response = await fetch(
@@ -210,6 +234,7 @@ export default function Chat() {
           id: m.id || `msg-${Date.now()}-${idx}`,
         }));
         setMessages(loaded);
+        messagesOwnerIdRef.current = currentConversationId;
         return loaded;
       }
     } catch (error) {
@@ -234,7 +259,8 @@ export default function Chat() {
   /** Core streaming helper — call this with the prepared llmMessages array */
   const streamAssistantResponse = async (
     llmMessages: LLMMessage[],
-    conversationIdForStream: string
+    conversationIdForStream: string,
+    parentMessageId?: string
   ): Promise<void> => {
     if (!config || !sessionId) return;
 
@@ -253,7 +279,11 @@ export default function Chat() {
     };
 
     streamingConvIdRef.current = conversationIdForStream;
-    setMessages((prev) => [...prev, initialAssistantMessage]);
+    const updatedMessages = [...messages, initialAssistantMessage];
+    setMessages(updatedMessages);
+    // Seed the cache immediately so background safeUpdateMessage has a base to work from
+    messagesCacheRef.current[conversationIdForStream] = updatedMessages;
+    
     setIsLoading(true);
     setStreamingConversationId(conversationIdForStream);
 
@@ -264,12 +294,26 @@ export default function Chat() {
     const formattedTools =
       agentTools.length > 0 ? OpenAIProvider.formatToolsForOpenAI(agentTools) : undefined;
 
-    /** Safely update messages only if still streaming for this conversation */
+    // Capture which conversation the viewer is in at stream START for the toast check
+    const viewedConvAtStart = currentConversationId;
+
+    /** Update message state when actively viewing this conversation,
+     *  or update the cache when streaming in background (different conv active). */
     const safeUpdateMessage = (updater: (m: Message) => Message) => {
       if (streamingConvIdRef.current !== conversationIdForStream) return;
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantTempId ? updater(m) : m))
-      );
+
+      if (currentConversationId !== conversationIdForStream) {
+        // Background stream: update the per-conversation cache only
+        const cached = messagesCacheRef.current[conversationIdForStream] || [];
+        messagesCacheRef.current[conversationIdForStream] = cached.map(
+          (m) => (m.id === assistantTempId ? updater(m) : m)
+        );
+      } else {
+        // Active conversation: update React state directly
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantTempId ? updater(m) : m))
+        );
+      }
     };
 
     try {
@@ -332,21 +376,30 @@ export default function Chat() {
               content: assistantRef.current.content,
               reasoning: assistantRef.current.reasoning,
               executionSteps: assistantRef.current.steps,
+              parentMessageId,
             }),
           }
         );
 
         if (assistantResp.ok) {
           const savedAssistant = await assistantResp.json();
-          // Sync server-assigned ID back to state
+          // Sync server-assigned ID back to both state and cache
+          const syncId = (m: Message) =>
+            m.id === assistantTempId
+              ? { ...m, id: savedAssistant.id, isPartialContent: false }
+              : m;
+
+          // Always update cache
+          if (messagesCacheRef.current[conversationIdForStream]) {
+            messagesCacheRef.current[conversationIdForStream] =
+              messagesCacheRef.current[conversationIdForStream].map(syncId);
+          }
+          // Update state only if still on this conversation
           if (streamingConvIdRef.current === conversationIdForStream) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantTempId
-                  ? { ...m, id: savedAssistant.id, isPartialContent: false }
-                  : m
-              )
-            );
+            setMessages((prev) => prev.map(syncId));
+          } else if (currentConversationId === conversationIdForStream) {
+            // Navigated back during save — reload from updated cache
+            setMessages(messagesCacheRef.current[conversationIdForStream] || []);
           }
         } else {
           console.error("Failed to save assistant message:", assistantResp.status);
@@ -357,11 +410,8 @@ export default function Chat() {
         safeUpdateMessage((m) => ({ ...m, isPartialContent: false }));
       }
 
-      // Notify if user navigated away during streaming
-      if (
-        streamingConvIdRef.current !== conversationIdForStream ||
-        conversationIdForStream !== currentConversationId
-      ) {
+      // Notify if user navigated away during streaming (use captured conv at start)
+      if (conversationIdForStream !== viewedConvAtStart) {
         const conv = conversations.find((c) => c.id === conversationIdForStream);
         toast({
           title: "Response ready",
@@ -406,9 +456,12 @@ export default function Chat() {
     // Capture the current messages BEFORE adding new message to avoid stale closure
     const capturedHistory = [...messages, userMessage];
     const isFirstMessage = messages.length === 0;
+    // parentMessageId for assistant = the user message we're about to add
+    const lastExistingMsgId = messages.slice(-1)[0]?.id;
 
     // Add user message to UI immediately
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(capturedHistory);
+    messagesOwnerIdRef.current = currentConversationId; // Claim ownership immediately
 
     // Save user message to server (fire & forget — sync ID after streaming)
     const userSavePromise = fetch(
@@ -416,7 +469,11 @@ export default function Chat() {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "user", content: userContent }),
+        body: JSON.stringify({
+          role: "user",
+          content: userContent,
+          parentMessageId: lastExistingMsgId,
+        }),
       }
     );
 
@@ -430,7 +487,7 @@ export default function Chat() {
     );
 
     try {
-      await streamAssistantResponse(llmMessages, currentConversationId);
+      await streamAssistantResponse(llmMessages, currentConversationId, userTempId);
 
       if (isFirstMessage) {
         const words = userContent.split(" ").slice(0, 5).join(" ");
@@ -485,7 +542,9 @@ export default function Chat() {
         ...loadedMessages.map((m) => ({ role: m.role as any, content: m.content }))
       );
 
-      await streamAssistantResponse(llmMessages, currentConversationId);
+      // parentMessageId = last user message (the one before the regenerated assistant msg)
+      const lastUserMsg = [...loadedMessages].reverse().find((m) => m.role === "user");
+      await streamAssistantResponse(llmMessages, currentConversationId, lastUserMsg?.id);
     } catch (error) {
       console.error("Regenerate error:", error);
       toast({ title: "Error", description: "Regeneration failed", variant: "destructive" });
@@ -513,7 +572,9 @@ export default function Chat() {
           ...loadedMessages.map((m) => ({ role: m.role as any, content: m.content }))
         );
 
-        await streamAssistantResponse(llmMessages, currentConversationId);
+        // parentMessageId = the edited user message
+        const lastUserMsg = [...loadedMessages].reverse().find((m) => m.role === "user");
+        await streamAssistantResponse(llmMessages, currentConversationId, lastUserMsg?.id);
       }
     } catch (error) {
       console.error("Edit error:", error);
