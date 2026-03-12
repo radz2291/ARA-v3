@@ -164,12 +164,14 @@ export class OpenAIProvider {
   /**
    * Stream response with Server-Sent Events
    * Emits events for real-time feedback during tool execution
+   * Now supports separate reasoning events and AbortController
    */
   async streamResponse(
     messages: LLMMessage[],
     tools?: ToolFunction[],
     workspaceId?: string,
-    onEvent?: (event: any) => void
+    onEvent?: (event: any) => void,
+    signal?: AbortSignal
   ): Promise<string> {
     if (!this.sessionId && !this.config.apiKey) {
       throw new Error("API key not configured");
@@ -207,6 +209,7 @@ export class OpenAIProvider {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
+        signal,
       });
 
       if (!response.ok) {
@@ -246,10 +249,12 @@ export class OpenAIProvider {
               onEvent(eventData);
             }
 
-            // Accumulate response content
+            // Accumulate response content (not reasoning)
             if (eventData.type === "response") {
               finalContent += eventData.content || "";
             }
+            // Reasoning events are emitted but not accumulated into final content
+            // They're handled separately via the onEvent callback
           } catch (e) {
             console.warn("Failed to parse event:", line, e);
           }

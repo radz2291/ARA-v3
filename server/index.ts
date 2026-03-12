@@ -17,6 +17,11 @@ import {
   handleAddMessage,
   handleUpdateConversation,
   handleDeleteConversation,
+  handleGetBranches,
+  handleSwitchBranch,
+  handleDeleteBranch,
+  handleEditMessage,
+  handleRegenerateMessage,
 } from "./routes/conversations";
 import {
   handleListAgents,
@@ -94,6 +99,30 @@ export function createServer() {
   app.delete(
     "/api/sessions/:sessionId/conversations/:conversationId",
     handleDeleteConversation
+  );
+
+  // Branch routes
+  app.get(
+    "/api/sessions/:sessionId/conversations/:conversationId/branches",
+    handleGetBranches
+  );
+  app.post(
+    "/api/sessions/:sessionId/conversations/:conversationId/branches/:branchId/switch",
+    handleSwitchBranch
+  );
+  app.delete(
+    "/api/sessions/:sessionId/conversations/:conversationId/branches/:branchId",
+    handleDeleteBranch
+  );
+
+  // Message editing and regeneration routes
+  app.post(
+    "/api/sessions/:sessionId/conversations/:conversationId/messages/:messageId/edit",
+    handleEditMessage
+  );
+  app.post(
+    "/api/sessions/:sessionId/conversations/:conversationId/messages/:messageId/regenerate",
+    handleRegenerateMessage
   );
 
   // Agent routes

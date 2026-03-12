@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Plus, AlertCircle, Trash2, Edit2, Check, X, Users, Wrench } from "lucide-react";
+import { Send, Plus, AlertCircle, Users, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Layout } from "@/components/Layout";
@@ -15,13 +15,18 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/contexts/SessionContext";
 import { ToolExecutionSteps, ExecutionStep } from "@/components/ToolExecutionSteps";
+import { MessageList } from "@/components/MessageList";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  reasoning?: string; // NEW - extracted from reasoning_content
   timestamp: string;
   executionSteps?: ExecutionStep[];
+  parentMessageId?: string; // NEW - ID of the message this is a response to
+  branchId?: string; // NEW - which branch this message belongs to
+  isPartialContent?: boolean; // NEW - true when streaming, false when complete
 }
 
 // interface Conversation moved to SessionContext
@@ -57,7 +62,10 @@ export default function Chat() {
     isLoadingSession,
     conversations,
     isLoadingConversations,
-    renameConversation
+    renameConversation,
+    currentBranchId,
+    availableBranches,
+    switchBranch,
   } = useSession();
 
   // Get sessionId, conversationId, workspaceId, and agentId from URL params
@@ -85,7 +93,8 @@ export default function Chat() {
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [workspaceAgents, setWorkspaceAgents] = useState<Agent[]>([]);
   const [agentTools, setAgentTools] = useState<any[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [currentStreamingMessageId, setCurrentStreamingMessageId] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Load configuration and conversations on mount
   useEffect(() => {
@@ -114,7 +123,6 @@ export default function Chat() {
       loadAgent(urlAgentId);
     }
   }, [urlAgentId]);
-
 
   const loadWorkspace = async (id: string) => {
     try {
@@ -195,15 +203,6 @@ export default function Chat() {
     loadConversationMessages();
   }, [currentConversationId, sessionId]);
 
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
-
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !config || !currentConversationId || !sessionId) return;
@@ -226,12 +225,19 @@ export default function Chat() {
         id: assistantMessageId,
         role: "assistant",
         content: "",
+        reasoning: "",
         timestamp: new Date().toISOString(),
         executionSteps: [],
+        isPartialContent: true,
       };
 
       // Immediately update UI with user message and empty assistant message
       setMessages((prev) => [...prev, userMessage, initialAssistantMessage]);
+      setCurrentStreamingMessageId(assistantMessageId);
+
+      // Create AbortController for this request
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
       // Parallelize: Start user message save and LLM call concurrently
       const isFirstMessage = messages.length === 0;
@@ -278,7 +284,15 @@ export default function Chat() {
         : undefined;
 
       const llmPromise = provider.streamResponse(llmMessages, formattedTools, workspaceId || undefined, (event) => {
-        if (event.type === "response") {
+        if (event.type === "reasoning") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, reasoning: (m.reasoning || "") + (event.content || "") }
+                : m
+            )
+          );
+        } else if (event.type === "response") {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMessageId
@@ -306,8 +320,6 @@ export default function Chat() {
               return m;
             })
           );
-
-
         } else if (event.type === "tool_result" || event.type === "tool_error") {
           const isError = event.type === "tool_error";
           setMessages((prev) =>
@@ -333,10 +345,8 @@ export default function Chat() {
               return m;
             })
           );
-
-
         }
-      });
+      }, abortController.signal);
 
       // Wait for stream to finish
       const finalContent = await llmPromise;
@@ -363,6 +373,7 @@ export default function Chat() {
             body: JSON.stringify({
               role: "assistant",
               content: finalContent,
+              reasoning: finalAssistantMessage?.reasoning || "",
               executionSteps: finalAssistantMessage?.executionSteps || [],
             }),
           }
@@ -377,20 +388,46 @@ export default function Chat() {
         return currentMessages;
       });
 
+      // Mark message as complete
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMessageId ? { ...m, isPartialContent: false } : m
+        )
+      );
+
       // Ensure user save completes
       await userSavePromise;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to get response";
+      if (error instanceof DOMException && error.name === "AbortError") {
+        // Stop was called - message is already in state as partial
+        toast({
+          title: "Response stopped",
+          description: "The response was interrupted by user",
+        });
+      } else {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to get response";
 
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
       setIsSavingMessage(false);
+      setCurrentStreamingMessageId(null);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleStopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setCurrentStreamingMessageId(null);
     }
   };
 
@@ -523,87 +560,28 @@ export default function Chat() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-            {messages.length === 0 && !isLoadingConversation ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <h2 className="text-2xl font-bold text-foreground dark:text-foreground mb-2">
-                    Start a Conversation
-                  </h2>
-                  <p className="text-muted-foreground dark:text-muted-foreground">
-                    Ask me anything and I'll help you out.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn(
-                    "flex gap-3 animate-slide-in",
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  )}
-                >
-                  {message.role === "assistant" && (
-                    <div className="w-8 h-8 rounded-full bg-primary dark:bg-primary flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-primary-foreground dark:text-primary-foreground">
-                        A
-                      </span>
-                    </div>
-                  )}
-
-                  <div
-                    className={cn(
-                      "max-w-2xl rounded-lg px-4 py-3",
-                      message.role === "user"
-                        ? "bg-primary dark:bg-primary text-primary-foreground dark:text-primary-foreground"
-                        : "bg-card dark:bg-card text-foreground dark:text-foreground border border-border dark:border-border"
-                    )}
-                  >
-                    {message.content ? (
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    ) : (
-                      message.role === "assistant" &&
-                      (!message.executionSteps || message.executionSteps.length === 0) &&
-                      isLoading && (
-                        <div className="flex gap-1 py-1">
-                          <div className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce" />
-                          <div
-                            className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-                            style={{ animationDelay: "0.1s" }}
-                          />
-                          <div
-                            className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-                            style={{ animationDelay: "0.2s" }}
-                          />
-                        </div>
-                      )
-                    )}
-
-                    {message.executionSteps && message.executionSteps.length > 0 && (
-                      <ToolExecutionSteps steps={message.executionSteps} />
-                    )}
-                    <p className="text-xs opacity-50 mt-2">
-                      {new Date(message.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-
-                  {message.role === "user" && (
-                    <div className="w-8 h-8 rounded-full bg-muted dark:bg-muted flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-muted-foreground dark:text-muted-foreground">
-                        U
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
+          <MessageList
+            messages={messages}
+            isLoading={isLoading}
+            isLoadingConversation={isLoadingConversation}
+            currentBranchId={currentBranchId}
+            availableBranches={availableBranches}
+            loadingMessageId={currentStreamingMessageId}
+            onEdit={(messageId) => {
+              // TODO: Implement edit UI
+              console.log("Edit message:", messageId);
+            }}
+            onRegenerate={(messageId) => {
+              // TODO: Implement regenerate
+              console.log("Regenerate message:", messageId);
+            }}
+            onStop={handleStopStreaming}
+            onBranchChange={(branchId) => {
+              switchBranch(branchId).then(() => {
+                loadConversationMessages();
+              });
+            }}
+          />
 
           {/* Input Area */}
           <div className="border-t border-border dark:border-border px-6 py-4 bg-background dark:bg-background">

@@ -506,6 +506,7 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
       sendEvent({ type: "debug", message: `Provider Fetch OK. Status: ${providerResponse.status}. Headers: ${JSON.stringify(Object.fromEntries(providerResponse.headers.entries()))}` });
 
       let contentAccumulator = "";
+      let reasoningAccumulator = "";
       let toolCalls: any[] = [];
 
       const decoder = new TextDecoder("utf-8");
@@ -543,15 +544,16 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
             if (data.choices && data.choices[0].delta) {
               const delta = data.choices[0].delta;
 
+              // Separate reasoning from content
               if (delta.reasoning_content) {
-                contentAccumulator += delta.reasoning_content;
-                sendEvent({ type: "response", content: delta.reasoning_content });
+                reasoningAccumulator += delta.reasoning_content;
+                // Emit reasoning as separate event
+                sendEvent({ type: "reasoning", content: delta.reasoning_content });
               }
 
               if (delta.content) {
-                // DEBUG: console.log("Extracted content:", delta.content);
                 contentAccumulator += delta.content;
-                // Emit content immediately to UI
+                // Emit response content
                 sendEvent({ type: "response", content: delta.content });
               }
 
@@ -585,13 +587,12 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
             const delta = data.choices[0].delta;
 
             if (delta.reasoning_content) {
-              contentAccumulator += delta.reasoning_content;
-              sendEvent({ type: "response", content: delta.reasoning_content });
+              reasoningAccumulator += delta.reasoning_content;
+              sendEvent({ type: "reasoning", content: delta.reasoning_content });
             }
 
             if (delta.content) {
               contentAccumulator += delta.content;
-              // Emit content immediately to UI
               sendEvent({ type: "response", content: delta.content });
             }
 
@@ -627,8 +628,10 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
       sendEvent({ type: "thinking", message: `Executing ${validToolCalls.length} tool(s)...` });
 
       // Add the assistant's tool_calls message to history
+      // Keep reasoning and content separate in the message
       const messageToPush: any = { role: "assistant", tool_calls: validToolCalls };
       if (contentAccumulator) messageToPush.content = contentAccumulator;
+      if (reasoningAccumulator) messageToPush.reasoning = reasoningAccumulator;
       conversationMessages.push(messageToPush);
 
       // Execute each tool call

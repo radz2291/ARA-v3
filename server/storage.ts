@@ -40,8 +40,10 @@ export interface Session {
 }
 
 export interface Message {
+  id: string; // NEW - unique message identifier
   role: "user" | "assistant" | "tool";
   content: string;
+  reasoning?: string; // NEW - extracted from reasoning_content
   timestamp: string;
   name?: string;
   tool_call_id?: string;
@@ -54,6 +56,9 @@ export interface Message {
     };
   }>;
   executionSteps?: any[];
+  parentMessageId?: string; // NEW - ID of the message this is a response to
+  branchId?: string; // NEW - which branch this message belongs to
+  isPartialContent?: boolean; // NEW - true when streaming, false when complete
 }
 
 export interface Conversation {
@@ -61,7 +66,10 @@ export interface Conversation {
   sessionId: string;
   agentId?: string; // Optional - which agent this conversation is with
   title: string;
-  messages: Message[];
+  messages: Message[]; // Current branch messages
+  branches?: Record<string, Message[]>; // NEW - alternative branches keyed by branchId
+  currentBranchId?: string; // NEW - which branch is currently active
+  messageGraph?: Record<string, { children: string[] }>; // NEW - tree structure for navigation
   createdAt: string;
   updatedAt: string;
 }
@@ -277,7 +285,10 @@ class ConversationsStorage {
     conversationId: string,
     role: "user" | "assistant",
     content: string,
-    executionSteps?: any[]
+    executionSteps?: any[],
+    reasoning?: string,
+    parentMessageId?: string,
+    branchId?: string
   ): Message {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
@@ -285,10 +296,15 @@ class ConversationsStorage {
     }
 
     const message: Message = {
+      id: randomUUID(),
       role,
       content,
       timestamp: new Date().toISOString(),
-      executionSteps
+      executionSteps,
+      reasoning,
+      parentMessageId,
+      branchId: branchId || conversation.currentBranchId || "default",
+      isPartialContent: false
     };
 
     conversation.messages.push(message);
@@ -314,6 +330,131 @@ class ConversationsStorage {
       this.debouncedSave();
     }
     return deleted;
+  }
+
+  // Branch management methods
+  getBranchMessages(conversationId: string, branchId: string): Message[] {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    if (branchId === "default" || branchId === (conversation.currentBranchId || "default")) {
+      return conversation.messages;
+    }
+
+    return conversation.branches?.[branchId] || [];
+  }
+
+  createBranch(conversationId: string, branchId: string, parentMessageId?: string): string {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    // Initialize branches map if not exists
+    if (!conversation.branches) {
+      conversation.branches = {};
+    }
+
+    // Get messages up to parent message (or all if no parent)
+    let branchMessages: Message[] = [];
+    if (parentMessageId) {
+      const parentIndex = conversation.messages.findIndex((m) => m.id === parentMessageId);
+      if (parentIndex >= 0) {
+        branchMessages = conversation.messages.slice(0, parentIndex + 1);
+      }
+    } else {
+      branchMessages = [...conversation.messages];
+    }
+
+    conversation.branches[branchId] = branchMessages;
+    conversation.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return branchId;
+  }
+
+  switchBranch(conversationId: string, branchId: string): Conversation {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    // Get the branch messages
+    const branchMessages = conversation.branches?.[branchId];
+    if (!branchMessages && branchId !== "default") {
+      throw new Error(`Branch ${branchId} not found`);
+    }
+
+    // Save current messages to old branch before switching
+    const oldBranchId = conversation.currentBranchId || "default";
+    if (!conversation.branches) {
+      conversation.branches = {};
+    }
+    conversation.branches[oldBranchId] = conversation.messages;
+
+    // Switch to new branch
+    if (branchId === "default") {
+      conversation.messages = conversation.branches["default"] || conversation.messages;
+    } else {
+      conversation.messages = branchMessages || [];
+    }
+
+    conversation.currentBranchId = branchId;
+    conversation.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return conversation;
+  }
+
+  getAllBranches(conversationId: string): string[] {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    const branches = Object.keys(conversation.branches || {});
+    const currentBranch = conversation.currentBranchId || "default";
+
+    // Always include "default" and current branch
+    const uniqueBranches = new Set([currentBranch, "default", ...branches]);
+    return Array.from(uniqueBranches);
+  }
+
+  deleteBranch(conversationId: string, branchId: string): boolean {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    if (!conversation.branches) {
+      return false;
+    }
+
+    const deleted = delete conversation.branches[branchId];
+    conversation.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return deleted;
+  }
+
+  updateMessage(conversationId: string, messageId: string, updates: Partial<Message>): Message {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    const messageIndex = conversation.messages.findIndex((m) => m.id === messageId);
+    if (messageIndex === -1) {
+      throw new Error(`Message ${messageId} not found`);
+    }
+
+    conversation.messages[messageIndex] = {
+      ...conversation.messages[messageIndex],
+      ...updates,
+    };
+
+    conversation.updatedAt = new Date().toISOString();
+    this.debouncedSave();
+    return conversation.messages[messageIndex];
   }
 }
 
@@ -789,12 +930,28 @@ export const storage = {
       conversationId: string,
       role: "user" | "assistant",
       content: string,
-      executionSteps?: any[]
-    ) => getConversationsStorage().addMessage(conversationId, role, content, executionSteps),
+      executionSteps?: any[],
+      reasoning?: string,
+      parentMessageId?: string,
+      branchId?: string
+    ) => getConversationsStorage().addMessage(conversationId, role, content, executionSteps, reasoning, parentMessageId, branchId),
     updateTitle: (conversationId: string, title: string) =>
       getConversationsStorage().updateTitle(conversationId, title),
     delete: (conversationId: string) =>
       getConversationsStorage().delete(conversationId),
+    // Branch management
+    getBranchMessages: (conversationId: string, branchId: string) =>
+      getConversationsStorage().getBranchMessages(conversationId, branchId),
+    createBranch: (conversationId: string, branchId: string, parentMessageId?: string) =>
+      getConversationsStorage().createBranch(conversationId, branchId, parentMessageId),
+    switchBranch: (conversationId: string, branchId: string) =>
+      getConversationsStorage().switchBranch(conversationId, branchId),
+    getAllBranches: (conversationId: string) =>
+      getConversationsStorage().getAllBranches(conversationId),
+    deleteBranch: (conversationId: string, branchId: string) =>
+      getConversationsStorage().deleteBranch(conversationId, branchId),
+    updateMessage: (conversationId: string, messageId: string, updates: Partial<Message>) =>
+      getConversationsStorage().updateMessage(conversationId, messageId, updates),
   },
   agents: {
     create: (
