@@ -285,25 +285,35 @@ export default function Chat() {
 
   const handleRegenerate = async (messageId: string) => {
     if (!sessionId || !currentConversationId || !config || isStreaming) return;
+    const convId = currentConversationId;
 
     try {
-      const branchId = await regenerateMessage(messageId);
-      if (!branchId) return;
+      const result = await regenerateMessage(messageId);
+      if (!result) return;
 
-      const loadedMessages = await reloadConversationMessages();
+      // Use the truncated messages returned directly from the server response.
+      // This avoids a secondary GET request that could race with the initial load fetch.
+      const truncatedMessages: import("@/contexts/ConversationStore").Message[] =
+        result.messages.map((m: any, idx: number) => ({
+          ...m,
+          id: m.id || `msg-${Date.now()}-${idx}`,
+        }));
+
+      // Update the store immediately with the authoritative truncated list
+      setConvMessages(convId, truncatedMessages);
 
       const llmMessages: LLMMessage[] = [];
       if (agent?.systemInstructions) {
         llmMessages.push({ role: "system", content: agent.systemInstructions });
       }
       llmMessages.push(
-        ...loadedMessages.map((m) => ({ role: m.role as any, content: m.content }))
+        ...truncatedMessages.map((m) => ({ role: m.role as any, content: m.content }))
       );
 
-      const lastUserMsg = [...loadedMessages].reverse().find((m) => m.role === "user");
+      const lastUserMsg = [...truncatedMessages].reverse().find((m) => m.role === "user");
       startStream(llmMessages, {
         sessionId,
-        conversationId: currentConversationId,
+        conversationId: convId,
         config,
         agentTools,
         workspaceId,
@@ -317,27 +327,36 @@ export default function Chat() {
 
   const handleEditSave = async () => {
     if (!editingMessageId || !currentConversationId || !config || !sessionId) return;
+    const convId = currentConversationId;
 
     try {
-      const branchId = await editMessage(editingMessageId, editContent);
+      const result = await editMessage(editingMessageId, editContent);
       setIsEditDialogOpen(false);
       setEditingMessageId(null);
 
-      if (branchId) {
-        const loadedMessages = await reloadConversationMessages();
+      if (result) {
+        // Use the truncated messages returned directly from the server response.
+        const truncatedMessages: import("@/contexts/ConversationStore").Message[] =
+          result.messages.map((m: any, idx: number) => ({
+            ...m,
+            id: m.id || `msg-${Date.now()}-${idx}`,
+          }));
+
+        // Update the store immediately with the authoritative truncated list
+        setConvMessages(convId, truncatedMessages);
 
         const llmMessages: LLMMessage[] = [];
         if (agent?.systemInstructions) {
           llmMessages.push({ role: "system", content: agent.systemInstructions });
         }
         llmMessages.push(
-          ...loadedMessages.map((m) => ({ role: m.role as any, content: m.content }))
+          ...truncatedMessages.map((m) => ({ role: m.role as any, content: m.content }))
         );
 
-        const lastUserMsg = [...loadedMessages].reverse().find((m) => m.role === "user");
+        const lastUserMsg = [...truncatedMessages].reverse().find((m) => m.role === "user");
         startStream(llmMessages, {
           sessionId,
-          conversationId: currentConversationId,
+          conversationId: convId,
           config,
           agentTools,
           workspaceId,

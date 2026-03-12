@@ -113,6 +113,11 @@ export const ConversationStoreProvider: React.FC<{
   const convStatesRef = useRef(convStates);
   convStatesRef.current = convStates;
 
+  // Per-conversation fetch version counter — incremented on each new fetch and
+  // on explicit setConvMessages calls. If a fetch completes and its capturedVersion
+  // no longer matches, the result is a stale overwrite and must be discarded.
+  const fetchVersionRefs = useRef<Map<string, number>>(new Map());
+
   // ── Derived ──────────────────────────────────────────────────────────────
 
   const streamingIds = new Set<string>(
@@ -143,6 +148,11 @@ export const ConversationStoreProvider: React.FC<{
 
   const setConvMessages = useCallback(
     (convId: string, messages: Message[]) => {
+      // Invalidate any in-flight fetch so it won't overwrite this explicit update
+      fetchVersionRefs.current.set(
+        convId,
+        (fetchVersionRefs.current.get(convId) ?? 0) + 1
+      );
       patchConv(convId, { messages });
     },
     [patchConv]
@@ -198,6 +208,10 @@ export const ConversationStoreProvider: React.FC<{
       }
 
       patchConv(convId, { isLoading: true });
+      // Capture the current fetch version — if it changes before this fetch returns,
+      // a newer explicit update happened and this stale result must be discarded.
+      const fetchVersion = (fetchVersionRefs.current.get(convId) ?? 0) + 1;
+      fetchVersionRefs.current.set(convId, fetchVersion);
       try {
         const res = await fetch(
           `/api/sessions/${sessionId}/conversations/${convId}`
@@ -210,7 +224,13 @@ export const ConversationStoreProvider: React.FC<{
               id: m.id || `msg-${Date.now()}-${idx}`,
             })
           );
-          // Guard: don't overwrite if streaming started while fetch was in-flight
+          // Guard 1: discard if a newer explicit setConvMessages invalidated this fetch
+          // Guard 2: discard if streaming started while fetch was in-flight
+          const currentVersion = fetchVersionRefs.current.get(convId) ?? 0;
+          if (currentVersion !== fetchVersion) {
+            patchConv(convId, { isLoading: false });
+            return loaded; // Return result but don't write to store
+          }
           if (!convStatesRef.current[convId]?.isStreaming) {
             patchConv(convId, { messages: loaded, isLoading: false });
           } else {

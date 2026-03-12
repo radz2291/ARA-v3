@@ -33,8 +33,8 @@ interface SessionContextType {
   /** Map of branchId -> ordered message IDs — used to detect divergence points */
   branchMessageIds: Record<string, string[]>;
   switchBranch: (branchId: string) => Promise<void>;
-  editMessage: (messageId: string, newContent: string) => Promise<string | null>;
-  regenerateMessage: (messageId: string) => Promise<string | null>;
+  editMessage: (messageId: string, newContent: string) => Promise<{ branchId: string; messages: any[] } | null>;
+  regenerateMessage: (messageId: string) => Promise<{ branchId: string; messages: any[] } | null>;
   loadBranches: () => Promise<void>;
   // Background streaming
   /** @deprecated Use ConversationStore.streamingIds instead */
@@ -282,7 +282,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
   /**
    * Edit a message and create a new branch
    */
-  const editMessage = async (messageId: string, newContent: string): Promise<string | null> => {
+  const editMessage = async (messageId: string, newContent: string): Promise<{ branchId: string; messages: any[] } | null> => {
     if (!sessionId || !currentConversationId) return null;
     try {
       const response = await fetch(
@@ -298,7 +298,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
         setCurrentBranchId(data.currentBranchId || data.branchId);
         // Reload branches
         await loadBranches();
-        return data.branchId;
+        return { branchId: data.branchId, messages: data.messages || [] };
       }
     } catch (error) {
       console.error("Error editing message:", error);
@@ -309,7 +309,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
   /**
    * Regenerate an assistant response in a new branch
    */
-  const regenerateMessage = async (messageId: string): Promise<string | null> => {
+  const regenerateMessage = async (messageId: string): Promise<{ branchId: string; messages: any[] } | null> => {
     if (!sessionId || !currentConversationId) return null;
     try {
       const response = await fetch(
@@ -324,7 +324,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
         setCurrentBranchId(data.currentBranchId || data.branchId);
         // Reload branches
         await loadBranches();
-        return data.branchId;
+        return { branchId: data.branchId, messages: data.messages || [] };
       }
     } catch (error) {
       console.error("Error regenerating message:", error);
