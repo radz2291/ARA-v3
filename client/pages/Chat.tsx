@@ -381,10 +381,10 @@ export default function Chat() {
         });
       }
 
-      // Background: Save assistant message (fire-and-forget)
-      setMessages((currentMessages) => {
-        const finalAssistantMessage = currentMessages.find(m => m.id === assistantMessageId);
-        fetch(
+      // Background: Save assistant message and update its id from server
+      const finalAssistantMessage = messages.find(m => m.id === assistantMessageId) || { reasoning: "", executionSteps: [] } as any;
+      try {
+        const assistantResp = await fetch(
           `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages`,
           {
             method: "POST",
@@ -392,30 +392,38 @@ export default function Chat() {
             body: JSON.stringify({
               role: "assistant",
               content: finalContent,
-              reasoning: finalAssistantMessage?.reasoning || "",
-              executionSteps: finalAssistantMessage?.executionSteps || [],
+              reasoning: finalAssistantMessage.reasoning || "",
+              executionSteps: finalAssistantMessage.executionSteps || [],
             }),
           }
-        ).catch((error) => {
-          console.error("Failed to save assistant message:", error);
-          toast({
-            title: "Warning",
-            description: "Failed to save assistant response. Please refresh to verify.",
-            variant: "destructive",
-          });
-        });
-        return currentMessages;
-      });
+        );
 
-      // Mark message as complete
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessageId ? { ...m, isPartialContent: false } : m
-        )
-      );
+        if (assistantResp.ok) {
+          const savedAssistant = await assistantResp.json();
+          setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, id: savedAssistant.id, isPartialContent: false } : m));
+        } else {
+          console.error("Failed to save assistant message: ", assistantResp.status);
+          toast({ title: "Warning", description: "Failed to save assistant response. Please refresh to verify.", variant: "destructive" });
+          setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, isPartialContent: false } : m));
+        }
+      } catch (error) {
+        console.error("Failed to save assistant message:", error);
+        toast({ title: "Warning", description: "Failed to save assistant response. Please refresh to verify.", variant: "destructive" });
+        setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, isPartialContent: false } : m));
+      }
 
-      // Ensure user save completes
-      await userSavePromise;
+      // Ensure user save completes and update its id
+      try {
+        const userResp = await userSavePromise;
+        if (userResp.ok) {
+          const savedUser = await userResp.json();
+          setMessages((prev) => prev.map((m) => m.id === userMessage.id ? { ...m, id: savedUser.id } : m));
+        } else {
+          console.error("Failed to save user message:", userResp.status);
+        }
+      } catch (e) {
+        console.error("User save failed:", e);
+      }
 
       // Background streaming: notify if user navigated away from this conversation
       if (streamingForConversationId && streamingForConversationId !== (contextConversationId || null)) {
@@ -541,10 +549,10 @@ export default function Chat() {
 
       const finalContent = await llmPromise;
 
-      // Save final assistant message
-      setMessages((currentMessages) => {
-        const finalAssistantMessage = currentMessages.find(m => m.id === assistantMessageId);
-        fetch(
+      // Save final assistant message and sync its id
+      const finalAssistantMessage = messages.find(m => m.id === assistantMessageId) || { reasoning: "", executionSteps: [] } as any;
+      try {
+        const assistantResp = await fetch(
           `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages`,
           {
             method: "POST",
@@ -552,16 +560,25 @@ export default function Chat() {
             body: JSON.stringify({
               role: "assistant",
               content: finalContent,
-              reasoning: finalAssistantMessage?.reasoning || "",
-              executionSteps: finalAssistantMessage?.executionSteps || [],
+              reasoning: finalAssistantMessage.reasoning || "",
+              executionSteps: finalAssistantMessage.executionSteps || [],
             }),
           }
-        ).catch((error) => {
-          console.error("Failed to save assistant message:", error);
+        );
+
+        if (assistantResp.ok) {
+          const savedAssistant = await assistantResp.json();
+          setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, id: savedAssistant.id, isPartialContent: false } : m));
+        } else {
+          console.error("Failed to save assistant message: ", assistantResp.status);
           toast({ title: "Warning", description: "Failed to save assistant response. Please refresh to verify.", variant: "destructive" });
-        });
-        return currentMessages.map(m => m.id === assistantMessageId ? { ...m, isPartialContent: false } : m);
-      });
+          setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, isPartialContent: false } : m));
+        }
+      } catch (error) {
+        console.error("Failed to save assistant message:", error);
+        toast({ title: "Warning", description: "Failed to save assistant response. Please refresh to verify.", variant: "destructive" });
+        setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, isPartialContent: false } : m));
+      }
 
       // Background streaming: notify if user navigated away from this conversation
       if (streamingForConversationId && streamingForConversationId !== (contextConversationId || null)) {

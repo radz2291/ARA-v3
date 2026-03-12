@@ -164,8 +164,13 @@ export const handleAddMessage: RequestHandler = (req, res) => {
     const message = storage.conversations.addMessage(conversationId, role, content, executionSteps);
 
     return res.json({
+      id: message.id,
       role: message.role,
       content: message.content,
+      reasoning: message.reasoning,
+      parentMessageId: message.parentMessageId,
+      branchId: message.branchId,
+      isPartialContent: message.isPartialContent,
       timestamp: message.timestamp,
       executionSteps: message.executionSteps
     });
