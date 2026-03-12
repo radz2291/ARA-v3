@@ -7,23 +7,30 @@ interface ReasoningSectionProps {
   isStreaming?: boolean;
 }
 
-export function ReasoningSection({ reasoning, isStreaming }: ReasoningSectionProps) {
+export function ReasoningSection({
+  reasoning,
+  isStreaming,
+}: ReasoningSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const wasStreamingRef = useRef(false);
 
   // Auto-expand when stream starts; auto-collapse only when stream ends
   useEffect(() => {
-    if (isStreaming && !wasStreamingRef.current) {
-      // Stream just started — expand to show thinking
-      setIsExpanded(true);
-      wasStreamingRef.current = true;
-    } else if (!isStreaming && wasStreamingRef.current) {
-      // Stream just ended — collapse (reasoning is now complete)
-      setIsExpanded(false);
-      wasStreamingRef.current = false;
-    }
-  }, [isStreaming]);
+    // Use setTimeout to avoid calling setState synchronously within effect
+    const timeoutId = setTimeout(() => {
+      if (isStreaming && !wasStreamingRef.current) {
+        // Stream just started — expand to show thinking
+        setIsExpanded(true);
+        wasStreamingRef.current = true;
+      } else if (!isStreaming && wasStreamingRef.current) {
+        // Stream just ended — collapse (reasoning is now complete)
+        setIsExpanded(false);
+        wasStreamingRef.current = false;
+      }
+    }, 0);
 
+    return () => clearTimeout(timeoutId);
+  }, [isStreaming]);
 
   if (!reasoning && !isStreaming) return null;
 
@@ -59,7 +66,11 @@ export function ReasoningSection({ reasoning, isStreaming }: ReasoningSectionPro
               />
             </div>
           ) : (
-            <p className={cn("text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed")}>
+            <p
+              className={cn(
+                "text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed",
+              )}
+            >
               {reasoning}
               {isStreaming && (
                 <span className="inline-block w-0.5 h-3 bg-muted-foreground animate-pulse ml-0.5 align-middle" />

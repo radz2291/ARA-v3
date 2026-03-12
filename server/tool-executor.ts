@@ -6,7 +6,6 @@
  */
 
 import { storage, Tool } from "./storage";
-import { randomUUID } from "crypto";
 
 /**
  * Tool execution result
@@ -34,7 +33,7 @@ export interface ToolContext {
  */
 async function executeWebSearch(
   input: Record<string, unknown>,
-  _context: ToolContext
+  _context: ToolContext,
 ): Promise<unknown> {
   const { query } = input as { query: string };
 
@@ -66,7 +65,7 @@ async function executeWebSearch(
  */
 async function executeFileOps(
   input: Record<string, unknown>,
-  context: ToolContext
+  context: ToolContext,
 ): Promise<unknown> {
   const { operation, filePath, content } = input as {
     operation: string;
@@ -76,7 +75,7 @@ async function executeFileOps(
 
   if (!operation || !filePath) {
     throw new Error(
-      "File operations require 'operation' and 'filePath' parameters"
+      "File operations require 'operation' and 'filePath' parameters",
     );
   }
 
@@ -87,7 +86,7 @@ async function executeFileOps(
   const validOps = ["read", "write", "append", "delete"];
   if (!validOps.includes(operation)) {
     throw new Error(
-      `Invalid operation. Must be one of: ${validOps.join(", ")}`
+      `Invalid operation. Must be one of: ${validOps.join(", ")}`,
     );
   }
 
@@ -96,7 +95,7 @@ async function executeFileOps(
       case "read": {
         const fileContent = storage.workspaces.getFile(
           context.workspaceId,
-          filePath
+          filePath,
         );
         if (!fileContent) {
           throw new Error(`File not found: ${filePath}`);
@@ -113,7 +112,11 @@ async function executeFileOps(
         if (content === undefined) {
           throw new Error("Write operation requires 'content' parameter");
         }
-        storage.workspaces.addFile(context.workspaceId, filePath, content as string);
+        storage.workspaces.addFile(
+          context.workspaceId,
+          filePath,
+          content as string,
+        );
         return {
           operation: "write",
           filePath,
@@ -131,7 +134,7 @@ async function executeFileOps(
         storage.workspaces.addFile(
           context.workspaceId,
           filePath,
-          existing + content
+          existing + content,
         );
         return {
           operation: "append",
@@ -154,6 +157,7 @@ async function executeFileOps(
         throw new Error(`Unknown operation: ${operation}`);
     }
   } catch (error: any) {
+    // eslint-disable-next-line preserve-caught-error
     throw new Error(`File operation failed: ${error.message}`);
   }
 }
@@ -165,7 +169,7 @@ async function executeFileOps(
  */
 async function executeCode(
   input: Record<string, unknown>,
-  context: ToolContext
+  _context: ToolContext,
 ): Promise<unknown> {
   const { code, language } = input as { code: string; language: string };
 
@@ -179,7 +183,7 @@ async function executeCode(
   const supportedLangs = ["javascript", "js"];
   if (!supportedLangs.includes(lang.toLowerCase())) {
     throw new Error(
-      `Language not supported. Supported: ${supportedLangs.join(", ")}`
+      `Language not supported. Supported: ${supportedLangs.join(", ")}`,
     );
   }
 
@@ -205,7 +209,8 @@ async function executeCode(
         language: lang,
         code,
         output: null,
-        error: "Dangerous operations (require, import, eval, process) are not allowed",
+        error:
+          "Dangerous operations (require, import, eval, process) are not allowed",
         status: "error",
         executionTime: Date.now() - startTime,
       };
@@ -218,7 +223,9 @@ async function executeCode(
     try {
       ivm = await import("isolated-vm");
     } catch {
-      console.warn("[Code Execution] isolated-vm not available, using restricted mode");
+      console.warn(
+        "[Code Execution] isolated-vm not available, using restricted mode",
+      );
       ivm = null;
     }
 
@@ -251,7 +258,7 @@ async function executeCodeWithIVM(
   code: string,
   lang: string,
   startTime: number,
-  ivm: any
+  ivm: any,
 ): Promise<unknown> {
   try {
     // Create a new isolate with memory limits (128MB)
@@ -264,12 +271,15 @@ async function executeCodeWithIVM(
     const jail = context_obj.global;
 
     // Expose console for logging
-    await jail.set("console", new ivm.ExternalCopy({
-      log: (...args: unknown[]) => console.log("[Sandbox]", ...args),
-      error: (...args: unknown[]) => console.error("[Sandbox]", ...args),
-      warn: (...args: unknown[]) => console.warn("[Sandbox]", ...args),
-      info: (...args: unknown[]) => console.info("[Sandbox]", ...args),
-    }).deref());
+    await jail.set(
+      "console",
+      new ivm.ExternalCopy({
+        log: (...args: unknown[]) => console.log("[Sandbox]", ...args),
+        error: (...args: unknown[]) => console.error("[Sandbox]", ...args),
+        warn: (...args: unknown[]) => console.warn("[Sandbox]", ...args),
+        info: (...args: unknown[]) => console.info("[Sandbox]", ...args),
+      }).deref(),
+    );
 
     // Expose safe built-ins
     await jail.set("JSON", JSON);
@@ -335,7 +345,7 @@ async function executeCodeWithIVM(
 function executeCodeRestricted(
   code: string,
   lang: string,
-  startTime: number
+  startTime: number,
 ): unknown {
   try {
     // Create a restricted scope
@@ -361,7 +371,10 @@ function executeCodeRestricted(
 
     // Use Function constructor with restricted scope (safer than direct eval)
     // eslint-disable-next-line no-new-func
-    const fn = new Function(...Object.keys(scope), `"use strict"; return (${code})`);
+    const fn = new Function(
+      ...Object.keys(scope),
+      `"use strict"; return (${code})`,
+    );
     const result = fn(...Object.values(scope));
 
     const executionTime = Date.now() - startTime;
@@ -410,7 +423,7 @@ function executeCodeRestricted(
 async function executeTool(
   tool: Tool,
   input: Record<string, unknown>,
-  context: ToolContext
+  context: ToolContext,
 ): Promise<ToolExecutionResult> {
   const startTime = Date.now();
 
@@ -464,7 +477,7 @@ async function executeTool(
 export async function executeTooById(
   toolId: string,
   input: Record<string, unknown>,
-  context: ToolContext
+  context: ToolContext,
 ): Promise<ToolExecutionResult> {
   const tool = storage.tools.get(toolId);
   if (!tool) {
@@ -481,13 +494,13 @@ export async function executeTooById(
 export async function executeToolByName(
   toolName: string,
   input: Record<string, unknown>,
-  context: ToolContext
+  context: ToolContext,
 ): Promise<ToolExecutionResult> {
   const tools = storage.tools.list();
   // Try matching by functionName first (what the LLM provider sends)
   // Then fall back to human-readable name for backward compatibility
   const tool = tools.find(
-    (t) => t.functionName === toolName || t.name === toolName
+    (t) => t.functionName === toolName || t.name === toolName,
   );
 
   if (!tool) {
@@ -545,7 +558,7 @@ export function initializeEssentialTools(): void {
         },
       },
       [],
-      "web_search"
+      "web_search",
     );
   }
 
@@ -569,7 +582,8 @@ export function initializeEssentialTools(): void {
           },
           content: {
             type: "string",
-            description: "Content to write or append (for write/append operations)",
+            description:
+              "Content to write or append (for write/append operations)",
           },
         },
         required: ["operation", "filePath"],
@@ -585,7 +599,7 @@ export function initializeEssentialTools(): void {
         },
       },
       [],
-      "file_ops"
+      "file_ops",
     );
   }
 
@@ -621,12 +635,14 @@ export function initializeEssentialTools(): void {
         },
       },
       [],
-      "code_exec"
+      "code_exec",
     );
   }
 
   // Delegate Task Tool (for Multi-Agent Orchestration)
-  const delegateTaskExists = existingTools.some((t) => t.name === "Delegate Task");
+  const delegateTaskExists = existingTools.some(
+    (t) => t.name === "Delegate Task",
+  );
   if (!delegateTaskExists) {
     storage.tools.create(
       "Delegate Task",
@@ -654,7 +670,7 @@ export function initializeEssentialTools(): void {
         },
       },
       [],
-      "delegate_task"
+      "delegate_task",
     );
   }
 
@@ -684,7 +700,7 @@ export function initializeEssentialTools(): void {
         },
       },
       [],
-      "get_weather"
+      "get_weather",
     );
   }
 
