@@ -505,6 +505,24 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
 
       sendEvent({ type: "debug", message: `Provider Fetch OK. Status: ${providerResponse.status}. Headers: ${JSON.stringify(Object.fromEntries(providerResponse.headers.entries()))}` });
 
+      // If provider returned a non-streaming JSON response, handle it gracefully
+      const contentType = (providerResponse.headers.get("content-type") || "").toLowerCase();
+      if (contentType.includes("application/json")) {
+        try {
+          const json = await providerResponse.json();
+          // Try common locations for content
+          const message = json.choices?.[0]?.message?.content || json.choices?.[0]?.message || json.choices?.[0]?.text || json.text || json;
+          const textContent = typeof message === "string" ? message : JSON.stringify(message);
+          if (textContent) {
+            sendEvent({ type: "response", content: textContent });
+          }
+        } catch (e) {
+          console.warn("[LLM Stream] Failed to parse JSON non-streaming response", e);
+        }
+        sendEvent({ type: "complete" });
+        return res.end();
+      }
+
       let contentAccumulator = "";
       let reasoningAccumulator = "";
       let toolCalls: any[] = [];
@@ -513,12 +531,6 @@ export const handleLLMStream: RequestHandler = async (req, res) => {
       let buffer = "";
 
       // Ensure body exists
-      if (!providerResponse.body) {
-        sendEvent({ type: "error", message: "Empty stream response from provider" });
-        return res.end();
-      }
-
-      // Read from the provider stream chunks
       if (!providerResponse.body) {
         sendEvent({ type: "error", message: "Empty stream response from provider" });
         return res.end();
