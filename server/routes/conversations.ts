@@ -297,9 +297,25 @@ export const handleGetBranches: RequestHandler = (req, res) => {
 
     const branches = storage.conversations.getAllBranches(conversationId);
 
+    // Return message fingerprints for each branch so the client can detect divergence points.
+    // Fingerprint = id + role + first-100-chars-of-content so edits (same id, new content)
+    // are also detected, not just regenerations (new id).
+    const branchMessageIds: Record<string, string[]> = {};
+    for (const branchId of branches) {
+      try {
+        const msgs = storage.conversations.getBranchMessages(conversationId, branchId);
+        branchMessageIds[branchId] = msgs.map(
+          (m) => `${m.id}:${m.role}:${(m.content || "").slice(0, 100)}`
+        );
+      } catch {
+        branchMessageIds[branchId] = [];
+      }
+    }
+
     return res.json({
       branches,
       currentBranchId: conversation.currentBranchId || "default",
+      branchMessageIds,
     });
   } catch (error) {
     console.error("Error getting branches:", error);

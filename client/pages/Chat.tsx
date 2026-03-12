@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Users, Square, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Send, AlertCircle, Users, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Layout } from "@/components/Layout";
@@ -71,9 +71,11 @@ export default function Chat() {
     renameConversation,
     currentBranchId,
     availableBranches,
+    branchMessageIds,
     switchBranch,
     editMessage,
     regenerateMessage,
+    loadBranches,
     setStreamingConversationId,
   } = useSession();
 
@@ -535,8 +537,71 @@ export default function Chat() {
 
   const handleBranchChange = async (branchId: string) => {
     await switchBranch(branchId);
+    // Reload branches so branchMessageIds are up-to-date for divergence detection
+    await loadBranches();
     await loadConversationMessages();
   };
+
+  /**
+   * Compute per-message branch points.
+   * Returns a Map<messageIndex, sortedBranchIds[]> where each entry marks a
+   * position in the current branch where another branch diverges.
+   */
+  const branchPoints = useMemo<Map<number, string[]>>(() => {
+    const currentId = currentBranchId || "default";
+    const currentIds = branchMessageIds[currentId];
+
+    // Need at least the current branch AND at least one other branch
+    if (!currentIds || Object.keys(branchMessageIds).length <= 1) return new Map();
+
+    const points = new Map<number, string[]>();
+
+    for (const [branchId, msgIds] of Object.entries(branchMessageIds)) {
+      if (branchId === currentId) continue;
+
+      const minLen = Math.min(currentIds.length, msgIds.length);
+      let divergenceIdx = -1;
+
+      for (let i = 0; i < minLen; i++) {
+        if (currentIds[i] !== msgIds[i]) {
+          divergenceIdx = i;
+          break;
+        }
+      }
+
+      // If one array is longer, the divergence is at the shorter length
+      if (divergenceIdx === -1 && currentIds.length !== msgIds.length) {
+        divergenceIdx = minLen;
+      }
+
+      if (divergenceIdx >= 0) {
+        if (!points.has(divergenceIdx)) {
+          // Always put current branch first so it maintains its position
+          points.set(divergenceIdx, [currentId]);
+        }
+        const existing = points.get(divergenceIdx)!;
+        if (!existing.includes(branchId)) {
+          existing.push(branchId);
+        }
+      }
+    }
+
+    // Sort each point's branch list by creation time (timestamp in ID)
+    const sortBranchIds = (ids: string[]) =>
+      [...ids].sort((a, b) => {
+        if (a === "default") return -1;
+        if (b === "default") return 1;
+        const tA = parseInt(a.split("_").pop() || "0", 10);
+        const tB = parseInt(b.split("_").pop() || "0", 10);
+        return tA - tB;
+      });
+
+    const sorted = new Map<number, string[]>();
+    for (const [idx, ids] of points) {
+      sorted.set(idx, sortBranchIds(ids));
+    }
+    return sorted;
+  }, [branchMessageIds, currentBranchId]);
 
   // ─── Not configured screen ────────────────────────────────────────────────
   if (!isConfigured) {
@@ -575,52 +640,13 @@ export default function Chat() {
             {isLoadingConversation && messages.length === 0 ? (
               <div className="h-5 w-40 bg-muted animate-pulse rounded" />
             ) : (
-              <div className="flex items-center gap-3">
-                <h1 className="text-base font-semibold text-foreground truncate">
-                  {workspace
-                    ? workspace.name
-                    : agent
-                      ? `Chat with ${agent.name}`
-                      : currentConversation?.title || "New Chat"}
-                </h1>
-                {/* Branch navigation */}
-                {availableBranches.length > 1 && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                      disabled={availableBranches.indexOf(currentBranchId || "default") <= 0}
-                      onClick={() => {
-                        const idx = availableBranches.indexOf(currentBranchId || "default");
-                        if (idx > 0) handleBranchChange(availableBranches[idx - 1]);
-                      }}
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </Button>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {availableBranches.indexOf(currentBranchId || "default") + 1} /{" "}
-                      {availableBranches.length}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                      disabled={
-                        availableBranches.indexOf(currentBranchId || "default") >=
-                        availableBranches.length - 1
-                      }
-                      onClick={() => {
-                        const idx = availableBranches.indexOf(currentBranchId || "default");
-                        if (idx < availableBranches.length - 1)
-                          handleBranchChange(availableBranches[idx + 1]);
-                      }}
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
+              <h1 className="text-base font-semibold text-foreground truncate">
+                {workspace
+                  ? workspace.name
+                  : agent
+                    ? `Chat with ${agent.name}`
+                    : currentConversation?.title || "New Chat"}
+              </h1>
             )}
             <p className="text-xs text-muted-foreground mt-0.5">
               {workspace ? (
@@ -661,6 +687,9 @@ export default function Chat() {
         <MessageList
           messages={messages}
           isLoadingConversation={isLoadingConversation}
+          branchPoints={branchPoints}
+          currentBranchId={currentBranchId}
+          onBranchChange={handleBranchChange}
           onEdit={(messageId) => {
             const msg = messages.find((m) => m.id === messageId);
             if (!msg) return;

@@ -30,6 +30,8 @@ interface SessionContextType {
   // Branch management
   currentBranchId: string | null;
   availableBranches: string[];
+  /** Map of branchId -> ordered message IDs — used to detect divergence points */
+  branchMessageIds: Record<string, string[]>;
   switchBranch: (branchId: string) => Promise<void>;
   editMessage: (messageId: string, newContent: string) => Promise<string | null>;
   regenerateMessage: (messageId: string) => Promise<string | null>;
@@ -54,6 +56,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
   // Branch management state
   const [currentBranchId, setCurrentBranchId] = useState<string | null>(null);
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
+  const [branchMessageIds, setBranchMessageIds] = useState<Record<string, string[]>>({});
   // Background streaming
   const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
 
@@ -244,6 +247,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
         const data = await response.json();
         setAvailableBranches(data.branches || []);
         setCurrentBranchId(data.currentBranchId || "default");
+        setBranchMessageIds(data.branchMessageIds || {});
       }
     } catch (error) {
       console.error("Error loading branches:", error);
@@ -341,6 +345,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     // Branch management
     currentBranchId,
     availableBranches,
+    branchMessageIds,
     switchBranch,
     editMessage,
     regenerateMessage,

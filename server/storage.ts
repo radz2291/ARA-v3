@@ -339,10 +339,14 @@ class ConversationsStorage {
       throw new Error(`Conversation ${conversationId} not found`);
     }
 
-    if (branchId === "default" || branchId === (conversation.currentBranchId || "default")) {
+    const currentBranchId = conversation.currentBranchId || "default";
+
+    // If asking for the currently active branch, return the live messages array
+    if (branchId === currentBranchId) {
       return conversation.messages;
     }
 
+    // Otherwise look up the saved branch messages
     return conversation.branches?.[branchId] || [];
   }
 

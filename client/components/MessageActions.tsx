@@ -9,6 +9,8 @@ interface MessageActionsProps {
   content: string;
   reasoning?: string;
   isStreaming?: boolean;
+  /** Use light (inverted) icon colors — for use on primary-color backgrounds */
+  light?: boolean;
   onEdit?: () => void;
   onRegenerate?: () => void;
   onStop?: () => void;
@@ -20,6 +22,7 @@ export function MessageActions({
   content,
   reasoning,
   isStreaming,
+  light,
   onEdit,
   onRegenerate,
   onStop,
@@ -53,6 +56,10 @@ export function MessageActions({
     ) : null;
   }
 
+  const iconCls = light
+    ? "text-primary-foreground/60 hover:text-primary-foreground"
+    : "text-muted-foreground hover:text-foreground";
+
   return (
     <div className="flex items-center gap-0.5">
       {/* Copy */}
@@ -61,10 +68,10 @@ export function MessageActions({
         size="icon"
         onClick={handleCopy}
         title="Copy"
-        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+        className={`h-7 w-7 ${iconCls}`}
       >
         {copied ? (
-          <Check className="w-3.5 h-3.5 text-green-500" />
+          <Check className="w-3.5 h-3.5 text-green-400" />
         ) : (
           <Copy className="w-3.5 h-3.5" />
         )}
@@ -77,7 +84,7 @@ export function MessageActions({
           size="icon"
           onClick={onEdit}
           title="Edit message"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          className={`h-7 w-7 ${iconCls}`}
         >
           <Edit2 className="w-3.5 h-3.5" />
         </Button>
@@ -90,7 +97,7 @@ export function MessageActions({
           size="icon"
           onClick={onRegenerate}
           title="Regenerate response"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          className={`h-7 w-7 ${iconCls}`}
         >
           <RotateCcw className="w-3.5 h-3.5" />
         </Button>
