@@ -132,10 +132,10 @@ export const handleGetConversation: RequestHandler = (req, res) => {
 export const handleAddMessage: RequestHandler = (req, res) => {
   try {
     const { sessionId, conversationId } = req.params;
-    const { role, content, executionSteps } = req.body;
+    const { role, content, executionSteps, reasoning, parentMessageId } = req.body;
 
     // Validate required fields
-    if (!role || !content) {
+    if (!role || content === undefined || content === null) {
       return res.status(400).json({ message: "Role and content are required" });
     }
 
@@ -161,7 +161,7 @@ export const handleAddMessage: RequestHandler = (req, res) => {
     }
 
     // Add message
-    const message = storage.conversations.addMessage(conversationId, role, content, executionSteps);
+    const message = storage.conversations.addMessage(conversationId, role, content, executionSteps, reasoning, parentMessageId);
 
     return res.json({
       id: message.id,

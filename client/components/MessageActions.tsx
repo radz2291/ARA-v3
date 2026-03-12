@@ -1,14 +1,14 @@
-import { Copy, Edit2, RotateCcw, Square } from "lucide-react";
+import { Copy, Edit2, RotateCcw, Square, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface MessageActionsProps {
   messageId: string;
   role: "user" | "assistant";
   content: string;
   reasoning?: string;
-  isLoading?: boolean;
+  isStreaming?: boolean;
   onEdit?: () => void;
   onRegenerate?: () => void;
   onStop?: () => void;
@@ -19,75 +19,80 @@ export function MessageActions({
   role,
   content,
   reasoning,
-  isLoading,
+  isStreaming,
   onEdit,
   onRegenerate,
   onStop,
 }: MessageActionsProps) {
   const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
-      const textToCopy = reasoning ? `${reasoning}\n\n${content}` : content;
-      await navigator.clipboard.writeText(textToCopy);
-      toast({
-        title: "Copied",
-        description: "Message copied to clipboard",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to copy message",
-        variant: "destructive",
-      });
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Failed to copy", variant: "destructive" });
     }
   };
 
-  return (
-    <div className="flex gap-1 mt-2">
+  if (isStreaming) {
+    // While streaming: only show stop button
+    return onStop ? (
       <Button
         variant="ghost"
         size="sm"
-        onClick={handleCopy}
-        title="Copy message"
-        className="h-8 w-8 p-0 hover:bg-secondary dark:hover:bg-secondary"
+        onClick={onStop}
+        title="Stop generating"
+        className="h-7 px-2 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
       >
-        <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+        <Square className="w-3 h-3 fill-current" />
+        Stop
+      </Button>
+    ) : null;
+  }
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {/* Copy */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleCopy}
+        title="Copy"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+      >
+        {copied ? (
+          <Check className="w-3.5 h-3.5 text-green-500" />
+        ) : (
+          <Copy className="w-3.5 h-3.5" />
+        )}
       </Button>
 
-      {isLoading && onStop && (
+      {/* Edit — user messages only */}
+      {role === "user" && onEdit && (
         <Button
           variant="ghost"
-          size="sm"
-          onClick={onStop}
-          title="Stop response"
-          className="h-8 w-8 p-0 hover:bg-destructive/10 dark:hover:bg-destructive/10"
-        >
-          <Square className="w-3.5 h-3.5 text-destructive" />
-        </Button>
-      )}
-
-      {role === "user" && onEdit && !isLoading && (
-        <Button
-          variant="ghost"
-          size="sm"
+          size="icon"
           onClick={onEdit}
           title="Edit message"
-          className="h-8 w-8 p-0 hover:bg-secondary dark:hover:bg-secondary"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
         >
-          <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
+          <Edit2 className="w-3.5 h-3.5" />
         </Button>
       )}
 
-      {role === "assistant" && onRegenerate && !isLoading && (
+      {/* Regenerate — assistant messages only */}
+      {role === "assistant" && onRegenerate && (
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={onRegenerate}
           title="Regenerate response"
-          className="h-8 w-8 p-0 hover:bg-secondary dark:hover:bg-secondary"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
         >
-          <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+          <RotateCcw className="w-3.5 h-3.5" />
         </Button>
       )}
     </div>

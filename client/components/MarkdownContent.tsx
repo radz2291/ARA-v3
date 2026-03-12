@@ -4,102 +4,111 @@ import { cn } from "@/lib/utils";
 interface MarkdownContentProps {
   content: string;
   className?: string;
-  isLoading?: boolean;
 }
 
-export function MarkdownContent({
-  content,
-  className,
-  isLoading = false,
-}: MarkdownContentProps) {
-  if (isLoading) {
-    return (
-      <div className="flex gap-1 py-1">
-        <div className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce" />
-        <div
-          className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-          style={{ animationDelay: "0.1s" }}
-        />
-        <div
-          className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-          style={{ animationDelay: "0.2s" }}
-        />
-      </div>
-    );
-  }
-
-  if (!content) {
-    return null;
-  }
+export function MarkdownContent({ content, className }: MarkdownContentProps) {
+  if (!content) return null;
 
   return (
     <div className={cn("prose prose-sm dark:prose-invert max-w-none", className)}>
       <ReactMarkdown
         components={{
-          h1: ({ node, ...props }) => (
-            <h1 className="text-xl font-bold mt-4 mb-2" {...props} />
+          h1: ({ children, ...props }) => (
+            <h1 className="text-xl font-bold mt-4 mb-2 first:mt-0" {...props}>{children}</h1>
           ),
-          h2: ({ node, ...props }) => (
-            <h2 className="text-lg font-bold mt-3 mb-2" {...props} />
+          h2: ({ children, ...props }) => (
+            <h2 className="text-lg font-semibold mt-3 mb-2 first:mt-0" {...props}>{children}</h2>
           ),
-          h3: ({ node, ...props }) => (
-            <h3 className="text-base font-bold mt-3 mb-1" {...props} />
+          h3: ({ children, ...props }) => (
+            <h3 className="text-base font-semibold mt-3 mb-1 first:mt-0" {...props}>{children}</h3>
           ),
-          h4: ({ node, ...props }) => (
-            <h4 className="text-sm font-bold mt-2 mb-1" {...props} />
+          h4: ({ children, ...props }) => (
+            <h4 className="text-sm font-semibold mt-2 mb-1" {...props}>{children}</h4>
           ),
-          p: ({ node, ...props }) => <p className="text-sm mb-2" {...props} />,
-          ul: ({ node, ...props }) => (
-            <ul className="list-disc list-inside text-sm mb-2 space-y-1" {...props} />
+          p: ({ children, ...props }) => (
+            <p className="text-sm leading-relaxed mb-3 last:mb-0" {...props}>{children}</p>
           ),
-          ol: ({ node, ...props }) => (
-            <ol className="list-decimal list-inside text-sm mb-2 space-y-1" {...props} />
+          ul: ({ children, ...props }) => (
+            <ul className="list-disc list-inside text-sm mb-3 space-y-1" {...props}>{children}</ul>
           ),
-          li: ({ node, ...props }) => <li className="ml-2" {...props} />,
-          code: ({ node, inline, ...props }) =>
-            inline ? (
+          ol: ({ children, ...props }) => (
+            <ol className="list-decimal list-inside text-sm mb-3 space-y-1" {...props}>{children}</ol>
+          ),
+          li: ({ children, ...props }) => (
+            <li className="ml-2 leading-relaxed" {...props}>{children}</li>
+          ),
+          code: ({ className: cls, children, ...props }) => {
+            const isBlock = cls?.startsWith("language-");
+            if (isBlock) {
+              return (
+                <code
+                  className={cn(
+                    "block bg-muted/80 border border-border/50 px-4 py-3 rounded-lg text-xs font-mono overflow-x-auto leading-relaxed",
+                    cls
+                  )}
+                  {...props}
+                >
+                  {children}
+                </code>
+              );
+            }
+            return (
               <code
-                className="bg-muted dark:bg-muted px-1 py-0.5 rounded text-xs font-mono"
+                className="bg-muted/80 border border-border/40 px-1.5 py-0.5 rounded text-xs font-mono"
                 {...props}
-              />
-            ) : (
-              <code
-                className="block bg-muted dark:bg-muted p-2 rounded text-xs font-mono overflow-x-auto mb-2"
-                {...props}
-              />
-            ),
-          pre: ({ node, ...props }) => (
+              >
+                {children}
+              </code>
+            );
+          },
+          pre: ({ children, ...props }) => (
             <pre
-              className="bg-muted dark:bg-muted p-3 rounded text-xs overflow-x-auto mb-2"
+              className="bg-muted/80 border border-border/50 rounded-lg text-xs overflow-x-auto mb-3 not-prose"
               {...props}
-            />
+            >
+              {children}
+            </pre>
           ),
-          blockquote: ({ node, ...props }) => (
+          blockquote: ({ children, ...props }) => (
             <blockquote
-              className="border-l-4 border-muted-foreground pl-3 italic text-sm my-2"
+              className="border-l-4 border-primary/40 pl-4 italic text-sm my-3 text-muted-foreground"
               {...props}
-            />
+            >
+              {children}
+            </blockquote>
           ),
-          a: ({ node, ...props }) => (
+          a: ({ children, ...props }) => (
             <a
-              className="text-primary dark:text-primary underline hover:opacity-80"
+              className="text-primary underline underline-offset-2 hover:opacity-80"
+              target="_blank"
+              rel="noopener noreferrer"
               {...props}
-            />
+            >
+              {children}
+            </a>
           ),
-          table: ({ node, ...props }) => (
-            <table
-              className="w-full border-collapse text-xs my-2"
-              {...props}
-            />
+          table: ({ children, ...props }) => (
+            <div className="overflow-x-auto mb-3">
+              <table className="w-full border-collapse text-xs" {...props}>{children}</table>
+            </div>
           ),
-          th: ({ node, ...props }) => (
+          th: ({ children, ...props }) => (
             <th
-              className="border border-border dark:border-border bg-muted dark:bg-muted p-2 text-left"
+              className="border border-border bg-muted px-3 py-2 text-left font-semibold"
               {...props}
-            />
+            >
+              {children}
+            </th>
           ),
-          td: ({ node, ...props }) => (
-            <td className="border border-border dark:border-border p-2" {...props} />
+          td: ({ children, ...props }) => (
+            <td className="border border-border px-3 py-2" {...props}>{children}</td>
+          ),
+          hr: () => <hr className="border-border my-4" />,
+          strong: ({ children, ...props }) => (
+            <strong className="font-semibold" {...props}>{children}</strong>
+          ),
+          em: ({ children, ...props }) => (
+            <em className="italic" {...props}>{children}</em>
           ),
         }}
       >

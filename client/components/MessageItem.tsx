@@ -3,7 +3,6 @@ import { ToolExecutionSteps, ExecutionStep } from "@/components/ToolExecutionSte
 import { ReasoningSection } from "@/components/ReasoningSection";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { MessageActions } from "@/components/MessageActions";
-import { BranchNavigation } from "@/components/BranchNavigation";
 
 interface MessageItemProps {
   messageId: string;
@@ -12,13 +11,10 @@ interface MessageItemProps {
   reasoning?: string;
   timestamp: string;
   executionSteps?: ExecutionStep[];
-  isLoading?: boolean;
-  currentBranchId?: string | null;
-  availableBranches?: string[];
+  isPartialContent?: boolean;
   onEdit?: () => void;
   onRegenerate?: () => void;
   onStop?: () => void;
-  onBranchChange?: (branchId: string) => void;
 }
 
 export function MessageItem({
@@ -28,112 +24,107 @@ export function MessageItem({
   reasoning,
   timestamp,
   executionSteps,
-  isLoading,
-  currentBranchId,
-  availableBranches = [],
+  isPartialContent,
   onEdit,
   onRegenerate,
   onStop,
-  onBranchChange,
 }: MessageItemProps) {
-  return (
-    <div
-      className={cn(
-        "flex gap-3 animate-slide-in",
-        role === "user" ? "justify-end" : "justify-start"
-      )}
-    >
-      {role === "assistant" && (
-        <div className="w-8 h-8 rounded-full bg-primary dark:bg-primary flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-bold text-primary-foreground dark:text-primary-foreground">
-            A
-          </span>
-        </div>
-      )}
+  const isStreaming = !!isPartialContent;
 
-      <div className="max-w-2xl w-full">
+  if (role === "user") {
+    return (
+      <div className="group flex justify-end gap-3">
+        <div className="flex flex-col items-end max-w-[80%]">
+          <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3">
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+          </div>
+          {/* Actions — visible on hover */}
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1">
+            <MessageActions
+              messageId={messageId}
+              role="user"
+              content={content}
+              isStreaming={false}
+              onEdit={onEdit}
+            />
+          </div>
+        </div>
+        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0 mt-1">
+          <span className="text-xs font-semibold text-muted-foreground">U</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Assistant message ────────────────────────────────────────
+  return (
+    <div className="group flex gap-3">
+      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 mt-1">
+        <span className="text-xs font-bold text-primary-foreground">A</span>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        {/* Reasoning section */}
+        {(reasoning || isStreaming) && (
+          <ReasoningSection
+            reasoning={reasoning}
+            isStreaming={isStreaming && !content}
+          />
+        )}
+
+        {/* Main content */}
+        {content ? (
+          <div className="relative">
+            <MarkdownContent content={content} />
+            {/* Streaming cursor */}
+            {isStreaming && (
+              <span className="inline-block w-0.5 h-4 bg-foreground/70 animate-pulse ml-0.5 align-middle" />
+            )}
+          </div>
+        ) : isStreaming && (!executionSteps || executionSteps.length === 0) && !reasoning ? (
+          /* Initial loading dots — no content yet */
+          <div className="flex gap-1 py-2">
+            <div className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" />
+            <div
+              className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce"
+              style={{ animationDelay: "0.15s" }}
+            />
+            <div
+              className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce"
+              style={{ animationDelay: "0.3s" }}
+            />
+          </div>
+        ) : null}
+
+        {/* Tool execution steps */}
+        {executionSteps && executionSteps.length > 0 && (
+          <ToolExecutionSteps steps={executionSteps} />
+        )}
+
+        {/* Timestamp + actions — visible on hover (or while streaming for stop) */}
         <div
           className={cn(
-            "rounded-lg px-4 py-3",
-            role === "user"
-              ? "bg-primary dark:bg-primary text-primary-foreground dark:text-primary-foreground"
-              : "bg-card dark:bg-card text-foreground dark:text-foreground border border-border dark:border-border"
+            "flex items-center gap-2 mt-2 transition-opacity",
+            isStreaming ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
         >
-          {/* Reasoning section - only for assistant messages */}
-          {role === "assistant" && (
-            <ReasoningSection reasoning={reasoning} isLoading={isLoading && !content} />
-          )}
-
-          {/* Content section */}
-          {content ? (
-            role === "assistant" ? (
-              <MarkdownContent content={content} />
-            ) : (
-              <p className="text-sm whitespace-pre-wrap">{content}</p>
-            )
-          ) : (
-            role === "assistant" &&
-            (!executionSteps || executionSteps.length === 0) &&
-            isLoading && (
-              <div className="flex gap-1 py-1">
-                <div className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce" />
-                <div
-                  className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-                  style={{ animationDelay: "0.1s" }}
-                />
-                <div
-                  className="w-2 h-2 rounded-full bg-muted-foreground dark:bg-muted-foreground animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                />
-              </div>
-            )
-          )}
-
-          {/* Execution steps */}
-          {executionSteps && executionSteps.length > 0 && (
-            <ToolExecutionSteps steps={executionSteps} />
-          )}
-
-          {/* Timestamp */}
-          <p className="text-xs opacity-50 mt-2">
+          <span className="text-xs text-muted-foreground">
             {new Date(timestamp).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             })}
-          </p>
-
-          {/* Message actions */}
+          </span>
           <MessageActions
             messageId={messageId}
-            role={role}
+            role="assistant"
             content={content}
             reasoning={reasoning}
-            isLoading={isLoading}
-            onEdit={onEdit}
+            isStreaming={isStreaming}
             onRegenerate={onRegenerate}
             onStop={onStop}
           />
         </div>
-
-        {/* Branch navigation - only for assistant messages */}
-        {role === "assistant" && availableBranches.length > 1 && onBranchChange && (
-          <BranchNavigation
-            currentBranchId={currentBranchId}
-            availableBranches={availableBranches}
-            onBranchChange={onBranchChange}
-            className="mt-2"
-          />
-        )}
       </div>
-
-      {role === "user" && (
-        <div className="w-8 h-8 rounded-full bg-muted dark:bg-muted flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-bold text-muted-foreground dark:text-muted-foreground">
-            U
-          </span>
-        </div>
-      )}
     </div>
   );
 }

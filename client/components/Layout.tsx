@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Plus, Settings, MessageSquare, Bot, Briefcase } from "lucide-react";
+import { Menu, X, Plus, Settings, MessageSquare, Bot, Briefcase, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/contexts/SessionContext";
@@ -19,7 +19,8 @@ export const Layout = ({ children }: LayoutProps) => {
     setCurrentConversationId,
     createNewConversation,
     deleteConversation,
-    renameConversation
+    renameConversation,
+    streamingConversationId,
   } = useSession();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -180,7 +181,12 @@ export const Layout = ({ children }: LayoutProps) => {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-sm truncate pr-8">{conv.title}</span>
+                        <span className="flex items-center gap-1.5 min-w-0 pr-8">
+                          <span className="text-sm truncate">{conv.title}</span>
+                          {streamingConversationId === conv.id && conv.id !== currentConversationId && (
+                            <Loader2 className="w-3 h-3 shrink-0 animate-spin text-primary" />
+                          )}
+                        </span>
                       )}
 
                       {editingId !== conv.id && (
