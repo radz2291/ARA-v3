@@ -16,6 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/contexts/SessionContext";
 import { ToolExecutionSteps, ExecutionStep } from "@/components/ToolExecutionSteps";
 import { MessageList } from "@/components/MessageList";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Message {
   id: string;
@@ -66,6 +69,10 @@ export default function Chat() {
     currentBranchId,
     availableBranches,
     switchBranch,
+    editMessage,
+    regenerateMessage,
+    streamingConversationId,
+    setStreamingConversationId,
   } = useSession();
 
   // Get sessionId, conversationId, workspaceId, and agentId from URL params
@@ -95,6 +102,14 @@ export default function Chat() {
   const [agentTools, setAgentTools] = useState<any[]>([]);
   const [currentStreamingMessageId, setCurrentStreamingMessageId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Edit message dialog state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+
+  // Regenerate flow state
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   // Load configuration and conversations on mount
   useEffect(() => {
@@ -257,6 +272,10 @@ export default function Chat() {
       const provider = createLLMProvider(config, sessionId);
       const llmMessages: LLMMessage[] = [];
 
+      // Background streaming: mark this conversation as streaming
+      const streamingForConversationId = currentConversationId;
+      setStreamingConversationId(streamingForConversationId);
+
       // Add agent system instructions if available
       if (agent?.systemInstructions) {
         llmMessages.push({
@@ -397,6 +416,15 @@ export default function Chat() {
 
       // Ensure user save completes
       await userSavePromise;
+
+      // Background streaming: notify if user navigated away from this conversation
+      if (streamingForConversationId && streamingForConversationId !== (contextConversationId || null)) {
+        const conv = conversations.find(c => c.id === streamingForConversationId);
+        toast({ title: "Response ready", description: `Response ready in '${conv?.title || 'Conversation'}'` });
+      }
+
+      // Cleanup streaming marker
+      setStreamingConversationId(null);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         // Stop was called - message is already in state as partial
@@ -428,6 +456,128 @@ export default function Chat() {
       abortControllerRef.current = null;
       setIsLoading(false);
       setCurrentStreamingMessageId(null);
+    }
+  };
+
+  const handleRegenerate = async (messageId: string) => {
+    if (!sessionId || !currentConversationId || !config) return;
+    try {
+      setIsRegenerating(true);
+      // Ask server to create new branch and prepare regeneration
+      const branchId = await regenerateMessage(messageId);
+      if (!branchId) {
+        setIsRegenerating(false);
+        return;
+      }
+
+      // SwitchBranch already performed by regenerateMessage, reload messages
+      await loadConversationMessages();
+
+      // Build provider messages from loaded messages
+      const provider = createLLMProvider(config, sessionId);
+      const llmMessages: LLMMessage[] = [];
+
+      if (agent?.systemInstructions) {
+        llmMessages.push({ role: "system", content: agent.systemInstructions });
+      }
+
+      llmMessages.push(
+        ...messages.map((m) => ({ role: m.role as any, content: m.content }))
+      );
+
+      // Prepare streaming assistant placeholder
+      const assistantMessageId = (Date.now() + 1).toString();
+      const initialAssistantMessage: Message = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        reasoning: "",
+        timestamp: new Date().toISOString(),
+        executionSteps: [],
+        isPartialContent: true,
+      };
+
+      setMessages((prev) => [...prev, initialAssistantMessage]);
+      setCurrentStreamingMessageId(assistantMessageId);
+      const streamingForConversationId = currentConversationId;
+      setStreamingConversationId(streamingForConversationId);
+
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      const formattedTools = agentTools.length > 0
+        ? OpenAIProvider.formatToolsForOpenAI(agentTools)
+        : undefined;
+
+      const llmPromise = provider.streamResponse(llmMessages, formattedTools, workspaceId || undefined, (event) => {
+        if (event.type === "reasoning") {
+          setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, reasoning: (m.reasoning || "") + (event.content || "") } : m));
+        } else if (event.type === "response") {
+          setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, content: (m.content || "") + (event.content || "") } : m));
+        } else if (event.type === "tool_start") {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id === assistantMessageId) {
+              const steps = m.executionSteps || [];
+              return { ...m, executionSteps: [...steps, { tool: event.toolName, status: "executing", timestamp: new Date().toISOString() }] };
+            }
+            return m;
+          }));
+        } else if (event.type === "tool_result" || event.type === "tool_error") {
+          const isError = event.type === "tool_error";
+          setMessages((prev) => prev.map((m) => {
+            if (m.id === assistantMessageId) {
+              const steps = [...(m.executionSteps || [])];
+              const lastIdx = [...steps].reverse().findIndex((s) => s.tool === event.toolName && s.status === "executing");
+              if (lastIdx !== -1) {
+                const actualIdx = steps.length - 1 - lastIdx;
+                steps[actualIdx] = { ...steps[actualIdx], status: isError ? "failed" : "completed", result: event.result, error: event.error, timestamp: new Date().toISOString() };
+                return { ...m, executionSteps: steps };
+              }
+            }
+            return m;
+          }));
+        }
+      }, abortController.signal);
+
+      const finalContent = await llmPromise;
+
+      // Save final assistant message
+      setMessages((currentMessages) => {
+        const finalAssistantMessage = currentMessages.find(m => m.id === assistantMessageId);
+        fetch(
+          `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              role: "assistant",
+              content: finalContent,
+              reasoning: finalAssistantMessage?.reasoning || "",
+              executionSteps: finalAssistantMessage?.executionSteps || [],
+            }),
+          }
+        ).catch((error) => {
+          console.error("Failed to save assistant message:", error);
+          toast({ title: "Warning", description: "Failed to save assistant response. Please refresh to verify.", variant: "destructive" });
+        });
+        return currentMessages.map(m => m.id === assistantMessageId ? { ...m, isPartialContent: false } : m);
+      });
+
+      // Background streaming: notify if user navigated away from this conversation
+      if (streamingForConversationId && streamingForConversationId !== (contextConversationId || null)) {
+        const conv = conversations.find(c => c.id === streamingForConversationId);
+        toast({ title: "Response ready", description: `Response ready in '${conv?.title || 'Conversation'}'` });
+      }
+
+      // Clear streaming state
+      setStreamingConversationId(null);
+      setCurrentStreamingMessageId(null);
+    } catch (error) {
+      console.error("Regenerate error:", error);
+      toast({ title: "Error", description: "Regeneration failed", variant: "destructive" });
+    } finally {
+      setIsRegenerating(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -568,12 +718,14 @@ export default function Chat() {
             availableBranches={availableBranches}
             loadingMessageId={currentStreamingMessageId}
             onEdit={(messageId) => {
-              // TODO: Implement edit UI
-              console.log("Edit message:", messageId);
+              const msg = messages.find(m => m.id === messageId);
+              if (!msg) return;
+              setEditingMessageId(messageId);
+              setEditContent(msg.content || "");
+              setIsEditDialogOpen(true);
             }}
             onRegenerate={(messageId) => {
-              // TODO: Implement regenerate
-              console.log("Regenerate message:", messageId);
+              handleRegenerate(messageId);
             }}
             onStop={handleStopStreaming}
             onBranchChange={(branchId) => {
@@ -582,6 +734,39 @@ export default function Chat() {
               });
             }}
           />
+
+          {/* Edit Message Dialog */}
+          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Edit Message</DialogTitle>
+                <DialogDescription>Modify the message content. This will create a new branch.</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-content">Content</Label>
+                  <Textarea id="edit-content" value={editContent} onChange={(e) => setEditContent((e.target as HTMLTextAreaElement).value)} />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={async () => {
+                    if (!editingMessageId) return;
+                    const branchId = await editMessage(editingMessageId, editContent);
+                    setIsEditDialogOpen(false);
+                    if (branchId) {
+                      // reload branch messages
+                      await loadConversationMessages();
+                      toast({ title: "Edited", description: "Message edited and new branch created" });
+                    }
+                  }}>Save</Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Input Area */}
           <div className="border-t border-border dark:border-border px-6 py-4 bg-background dark:bg-background">
