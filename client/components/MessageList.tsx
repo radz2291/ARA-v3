@@ -9,7 +9,6 @@ export interface Message {
   reasoning?: string;
   timestamp: string;
   executionSteps?: ExecutionStep[];
-  parentMessageId?: string;
   isPartialContent?: boolean;
 }
 

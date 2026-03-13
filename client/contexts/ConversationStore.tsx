@@ -40,7 +40,6 @@ export interface Message {
   reasoning?: string;
   timestamp: string;
   executionSteps?: ExecutionStep[];
-  parentMessageId?: string;
   isPartialContent?: boolean;
 }
 
@@ -57,7 +56,6 @@ interface StreamOpts {
   config: LLMConfig;
   agentTools: any[];
   workspaceId?: string | null;
-  parentMessageId?: string;
   /** Called when the stream finishes so the caller can auto-rename, etc. */
   onFinished?: (conversationId: string) => void;
 }
@@ -257,7 +255,6 @@ export const ConversationStoreProvider: React.FC<{
         config,
         agentTools,
         workspaceId,
-        parentMessageId,
         onFinished,
       } = opts;
 
@@ -396,7 +393,6 @@ export const ConversationStoreProvider: React.FC<{
                   content: acc.content,
                   reasoning: acc.reasoning,
                   executionSteps: acc.steps,
-                  parentMessageId,
                 }),
               },
             );

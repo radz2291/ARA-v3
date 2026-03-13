@@ -235,7 +235,6 @@ export default function Chat() {
         body: JSON.stringify({
           role: "user",
           content: userContent,
-          parentMessageId: lastExistingMsgId,
         }),
       },
     );
@@ -260,7 +259,6 @@ export default function Chat() {
       config,
       agentTools,
       workspaceId,
-      parentMessageId: userTempId,
       onFinished: async (finishedConvId) => {
         // Auto-rename on first message
         if (isFirstMessage) {
@@ -347,7 +345,6 @@ export default function Chat() {
         config,
         agentTools,
         workspaceId,
-        parentMessageId: lastUserMsg?.id,
       });
     } catch (error) {
       toast({
@@ -413,7 +410,6 @@ export default function Chat() {
           config,
           agentTools,
           workspaceId,
-          parentMessageId: lastUserMsg?.id,
         });
       }
     } catch (error) {
