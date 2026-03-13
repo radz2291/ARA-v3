@@ -219,12 +219,19 @@ export default function Chat() {
     const userContent = input.trim();
     setInput("");
 
+    // Get fresh messages directly from store for LLM history
+    // This ensures we have the latest state after any previous updates
+    const currentConvState = getConvState(currentConversationId);
+    const currentMessages = currentConvState.messages;
+    const isFirstMessage = currentMessages.length === 0;
+    const lastExistingMsgId = currentMessages.slice(-1)[0]?.id;
+
     const userTempId = `temp-user-${Date.now()}`;
     const timestamp = new Date().toISOString();
 
-    // Capture current messages before state update for LLM history
+    // Build history with the new user message
     const historyWithUser = [
-      ...messages,
+      ...currentMessages,
       {
         id: userTempId,
         role: "user" as const,
@@ -232,8 +239,6 @@ export default function Chat() {
         timestamp,
       },
     ];
-    const isFirstMessage = messages.length === 0;
-    const lastExistingMsgId = messages.slice(-1)[0]?.id;
 
     // Optimistically add user message to the store immediately
     setConvMessages(currentConversationId, historyWithUser);
