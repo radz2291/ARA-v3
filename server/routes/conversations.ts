@@ -491,13 +491,9 @@ export const handleEditMessage: RequestHandler = (req, res) => {
 
     const message = conversation.messages[messageIndex];
 
-    // Create a new branch from the message's parent
+    // Create a new branch with all current messages (including the one being edited)
     const newBranchId = `branch_${messageId}_${Date.now()}`;
-    storage.conversations.createBranch(
-      conversationId,
-      newBranchId,
-      message.parentMessageId,
-    );
+    storage.conversations.createBranch(conversationId, newBranchId);
 
     // Update messageGraph to track the divergence:
     // The parent message now has a new child in the new branch
@@ -585,13 +581,9 @@ export const handleRegenerateMessage: RequestHandler = (req, res) => {
         .json({ message: "Only assistant messages can be regenerated" });
     }
 
-    // Create a new branch from this message's parent
+    // Create a new branch with all current messages (including the one being regenerated)
     const newBranchId = `branch_regen_${messageId}_${Date.now()}`;
-    storage.conversations.createBranch(
-      conversationId,
-      newBranchId,
-      message.parentMessageId,
-    );
+    storage.conversations.createBranch(conversationId, newBranchId);
 
     // Update messageGraph to track the divergence:
     // The parent message now has a new child path for regeneration
