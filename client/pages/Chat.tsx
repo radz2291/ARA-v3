@@ -5,11 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Layout } from "@/components/Layout";
 import { cn } from "@/lib/utils";
 import { Link, useSearchParams } from "react-router-dom";
-import {
-  LLMMessage,
-  configStore,
-  LLMConfig,
-} from "@/lib/llm-service";
+import { LLMMessage, configStore, LLMConfig } from "@/lib/llm-service";
 import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/contexts/SessionContext";
 import { useConversationStore } from "@/contexts/ConversationStore";
@@ -150,13 +146,17 @@ export default function Chat() {
         const workspaceData = await response.json();
         setWorkspace(workspaceData);
         const agentPromises = workspaceData.agentIds.map((agentId: string) =>
-          fetch(`/api/agents/${agentId}`).then((r) => (r.ok ? r.json() : null))
+          fetch(`/api/agents/${agentId}`).then((r) => (r.ok ? r.json() : null)),
         );
         const agents = await Promise.all(agentPromises);
         setWorkspaceAgents(agents.filter((a): a is Agent => a !== null));
       }
     } catch (error) {
-      console.error("Error loading workspace:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load workspace",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingWorkspace(false);
     }
@@ -176,11 +176,19 @@ export default function Chat() {
             setAgentTools(toolsData.tools || []);
           }
         } catch (e) {
-          console.error("Failed to load agent tools", e);
+          toast({
+            title: "Error",
+            description: "Failed to load agent tools",
+            variant: "destructive",
+          });
         }
       }
     } catch (error) {
-      console.error("Error loading agent:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load agent",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingAgent(false);
     }
@@ -189,13 +197,24 @@ export default function Chat() {
   // ── Reload messages from server (used after edit/regen) ─────────────────
   const reloadConversationMessages = useCallback(async () => {
     if (!currentConversationId || !sessionId) return [];
-    return loadMessages(currentConversationId, sessionId, /* forceReload */ true);
+    return loadMessages(
+      currentConversationId,
+      sessionId,
+      /* forceReload */ true,
+    );
   }, [currentConversationId, sessionId, loadMessages]);
 
   // ── Send message ─────────────────────────────────────────────────────────
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() || !config || !currentConversationId || !sessionId || isStreaming) return;
+    if (
+      !input.trim() ||
+      !config ||
+      !currentConversationId ||
+      !sessionId ||
+      isStreaming
+    )
+      return;
 
     const userContent = input.trim();
     setInput("");
@@ -206,7 +225,12 @@ export default function Chat() {
     // Capture current messages before state update for LLM history
     const historyWithUser = [
       ...messages,
-      { id: userTempId, role: "user" as const, content: userContent, timestamp },
+      {
+        id: userTempId,
+        role: "user" as const,
+        content: userContent,
+        timestamp,
+      },
     ];
     const isFirstMessage = messages.length === 0;
     const lastExistingMsgId = messages.slice(-1)[0]?.id;
@@ -225,7 +249,7 @@ export default function Chat() {
           content: userContent,
           parentMessageId: lastExistingMsgId,
         }),
-      }
+      },
     );
 
     // Build LLM message history
@@ -234,7 +258,10 @@ export default function Chat() {
       llmMessages.push({ role: "system", content: agent.systemInstructions });
     }
     llmMessages.push(
-      ...historyWithUser.map((m) => ({ role: m.role as any, content: m.content }))
+      ...historyWithUser.map((m) => ({
+        role: m.role as any,
+        content: m.content,
+      })),
     );
 
     // Fire-and-forget stream — the store owns it from here
@@ -273,7 +300,11 @@ export default function Chat() {
         patchConvMessage(convId, userTempId, { id: savedUser.id });
       }
     } catch (e) {
-      console.error("User save failed:", e);
+      toast({
+        title: "Error",
+        description: "Failed to save message",
+        variant: "destructive",
+      });
     }
   };
 
@@ -307,10 +338,15 @@ export default function Chat() {
         llmMessages.push({ role: "system", content: agent.systemInstructions });
       }
       llmMessages.push(
-        ...truncatedMessages.map((m) => ({ role: m.role as any, content: m.content }))
+        ...truncatedMessages.map((m) => ({
+          role: m.role as any,
+          content: m.content,
+        })),
       );
 
-      const lastUserMsg = [...truncatedMessages].reverse().find((m) => m.role === "user");
+      const lastUserMsg = [...truncatedMessages]
+        .reverse()
+        .find((m) => m.role === "user");
       startStream(llmMessages, {
         sessionId,
         conversationId: convId,
@@ -320,13 +356,17 @@ export default function Chat() {
         parentMessageId: lastUserMsg?.id,
       });
     } catch (error) {
-      console.error("Regenerate error:", error);
-      toast({ title: "Error", description: "Regeneration failed", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Regeneration failed",
+        variant: "destructive",
+      });
     }
   };
 
   const handleEditSave = async () => {
-    if (!editingMessageId || !currentConversationId || !config || !sessionId) return;
+    if (!editingMessageId || !currentConversationId || !config || !sessionId)
+      return;
     const convId = currentConversationId;
 
     try {
@@ -347,13 +387,21 @@ export default function Chat() {
 
         const llmMessages: LLMMessage[] = [];
         if (agent?.systemInstructions) {
-          llmMessages.push({ role: "system", content: agent.systemInstructions });
+          llmMessages.push({
+            role: "system",
+            content: agent.systemInstructions,
+          });
         }
         llmMessages.push(
-          ...truncatedMessages.map((m) => ({ role: m.role as any, content: m.content }))
+          ...truncatedMessages.map((m) => ({
+            role: m.role as any,
+            content: m.content,
+          })),
         );
 
-        const lastUserMsg = [...truncatedMessages].reverse().find((m) => m.role === "user");
+        const lastUserMsg = [...truncatedMessages]
+          .reverse()
+          .find((m) => m.role === "user");
         startStream(llmMessages, {
           sessionId,
           conversationId: convId,
@@ -364,12 +412,17 @@ export default function Chat() {
         });
       }
     } catch (error) {
-      console.error("Edit error:", error);
-      toast({ title: "Error", description: "Edit failed", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Edit failed",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleTextareaKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -398,7 +451,8 @@ export default function Chat() {
     const currentId = currentBranchId || "default";
     const currentIds = branchMessageIds[currentId];
 
-    if (!currentIds || Object.keys(branchMessageIds).length <= 1) return new Map();
+    if (!currentIds || Object.keys(branchMessageIds).length <= 1)
+      return new Map();
 
     const points = new Map<number, string[]>();
 
@@ -454,7 +508,9 @@ export default function Chat() {
           <div className="flex-1 flex items-center justify-center px-6">
             <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center shadow-sm">
               <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-foreground mb-2">No LLM Configured</h2>
+              <h2 className="text-xl font-semibold text-foreground mb-2">
+                No LLM Configured
+              </h2>
               <p className="text-muted-foreground mb-6 text-sm">
                 Set up your LLM provider and API key to start chatting.
               </p>
@@ -468,7 +524,9 @@ export default function Chat() {
     );
   }
 
-  const currentConversation = conversations.find((c) => c.id === currentConversationId);
+  const currentConversation = conversations.find(
+    (c) => c.id === currentConversationId,
+  );
 
   return (
     <Layout>
@@ -491,7 +549,8 @@ export default function Chat() {
               {workspace ? (
                 <span className="flex items-center gap-1">
                   <Users className="w-3 h-3" />
-                  {workspaceAgents.length} agent{workspaceAgents.length !== 1 ? "s" : ""}
+                  {workspaceAgents.length} agent
+                  {workspaceAgents.length !== 1 ? "s" : ""}
                 </span>
               ) : agent ? (
                 agent.persona
@@ -562,10 +621,16 @@ export default function Chat() {
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleEditSave} disabled={!editContent.trim() || isStreaming}>
+              <Button
+                onClick={handleEditSave}
+                disabled={!editContent.trim() || isStreaming}
+              >
                 Save & Regenerate
               </Button>
             </DialogFooter>
@@ -591,7 +656,7 @@ export default function Chat() {
                   rows={1}
                   className={cn(
                     "flex-1 resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 text-sm min-h-[24px] max-h-[200px]",
-                    !currentConversationId && "opacity-50"
+                    !currentConversationId && "opacity-50",
                   )}
                 />
                 {isStreaming ? (

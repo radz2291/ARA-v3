@@ -67,7 +67,11 @@ interface ConversationStoreContextType {
   /** Get the live state for one conversation (safe to call with undefined id) */
   getConvState: (convId: string | null | undefined) => ConvState;
   /** Patch a single message inside a conversation by its ID */
-  patchConvMessage: (convId: string, messageId: string, updates: Partial<Message>) => void;
+  patchConvMessage: (
+    convId: string,
+    messageId: string,
+    updates: Partial<Message>,
+  ) => void;
   /** Set messages for a conversation (e.g. after loading from server) */
   setConvMessages: (convId: string, messages: Message[]) => void;
   /** Mark a conversation as loading */
@@ -82,7 +86,7 @@ interface ConversationStoreContextType {
   loadMessages: (
     convId: string,
     sessionId: string,
-    forceReload?: boolean
+    forceReload?: boolean,
   ) => Promise<Message[]>;
 }
 
@@ -92,7 +96,11 @@ const ConversationStoreContext = createContext<
   ConversationStoreContextType | undefined
 >(undefined);
 
-const EMPTY_STATE: ConvState = { messages: [], isStreaming: false, isLoading: false };
+const EMPTY_STATE: ConvState = {
+  messages: [],
+  isStreaming: false,
+  isLoading: false,
+};
 
 // ─── Provider ───────────────────────────────────────────────────────────────
 
@@ -108,11 +116,6 @@ export const ConversationStoreProvider: React.FC<{
     Map<string, { content: string; reasoning: string; steps: ExecutionStep[] }>
   >(new Map());
 
-  // Always-current ref to convStates — allows async callbacks to read latest
-  // state without stale closure issues
-  const convStatesRef = useRef(convStates);
-  convStatesRef.current = convStates;
-
   // Per-conversation fetch version counter — incremented on each new fetch and
   // on explicit setConvMessages calls. If a fetch completes and its capturedVersion
   // no longer matches, the result is a stale overwrite and must be discarded.
@@ -123,7 +126,7 @@ export const ConversationStoreProvider: React.FC<{
   const streamingIds = new Set<string>(
     Object.entries(convStates)
       .filter(([, s]) => s.isStreaming)
-      .map(([id]) => id)
+      .map(([id]) => id),
   );
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -133,29 +136,26 @@ export const ConversationStoreProvider: React.FC<{
       if (!convId) return EMPTY_STATE;
       return convStates[convId] ?? EMPTY_STATE;
     },
-    [convStates]
+    [convStates],
   );
 
-  const patchConv = useCallback(
-    (convId: string, patch: Partial<ConvState>) => {
-      setConvStates((prev) => ({
-        ...prev,
-        [convId]: { ...(prev[convId] ?? EMPTY_STATE), ...patch },
-      }));
-    },
-    []
-  );
+  const patchConv = useCallback((convId: string, patch: Partial<ConvState>) => {
+    setConvStates((prev) => ({
+      ...prev,
+      [convId]: { ...(prev[convId] ?? EMPTY_STATE), ...patch },
+    }));
+  }, []);
 
   const setConvMessages = useCallback(
     (convId: string, messages: Message[]) => {
       // Invalidate any in-flight fetch so it won't overwrite this explicit update
       fetchVersionRefs.current.set(
         convId,
-        (fetchVersionRefs.current.get(convId) ?? 0) + 1
+        (fetchVersionRefs.current.get(convId) ?? 0) + 1,
       );
       patchConv(convId, { messages });
     },
-    [patchConv]
+    [patchConv],
   );
 
   /** Update a single message inside a conversation without touching any other messages. */
@@ -169,20 +169,20 @@ export const ConversationStoreProvider: React.FC<{
           [convId]: {
             ...state,
             messages: state.messages.map((m) =>
-              m.id === messageId ? { ...m, ...updates } : m
+              m.id === messageId ? { ...m, ...updates } : m,
             ),
           },
         };
       });
     },
-    []
+    [],
   );
 
   const setConvLoading = useCallback(
     (convId: string, loading: boolean) => {
       patchConv(convId, { isLoading: loading });
     },
-    [patchConv]
+    [patchConv],
   );
 
   const stopStream = useCallback((convId: string) => {
@@ -196,15 +196,15 @@ export const ConversationStoreProvider: React.FC<{
     async (
       convId: string,
       sessionId: string,
-      forceReload = false
+      forceReload = false,
     ): Promise<Message[]> => {
-      const existing = convStatesRef.current[convId];
+      const existing = convStates[convId];
       // Skip if already loaded (unless forced), or if currently streaming
       if (!forceReload && (existing?.messages.length ?? 0) > 0) {
         return existing!.messages;
       }
-      if (convStatesRef.current[convId]?.isStreaming) {
-        return convStatesRef.current[convId].messages;
+      if (convStates[convId]?.isStreaming) {
+        return convStates[convId].messages;
       }
 
       patchConv(convId, { isLoading: true });
@@ -214,7 +214,7 @@ export const ConversationStoreProvider: React.FC<{
       fetchVersionRefs.current.set(convId, fetchVersion);
       try {
         const res = await fetch(
-          `/api/sessions/${sessionId}/conversations/${convId}`
+          `/api/sessions/${sessionId}/conversations/${convId}`,
         );
         if (res.ok) {
           const data = await res.json();
@@ -222,7 +222,7 @@ export const ConversationStoreProvider: React.FC<{
             (m: any, idx: number) => ({
               ...m,
               id: m.id || `msg-${Date.now()}-${idx}`,
-            })
+            }),
           );
           // Guard 1: discard if a newer explicit setConvMessages invalidated this fetch
           // Guard 2: discard if streaming started while fetch was in-flight
@@ -231,7 +231,7 @@ export const ConversationStoreProvider: React.FC<{
             patchConv(convId, { isLoading: false });
             return loaded; // Return result but don't write to store
           }
-          if (!convStatesRef.current[convId]?.isStreaming) {
+          if (!convStates[convId]?.isStreaming) {
             patchConv(convId, { messages: loaded, isLoading: false });
           } else {
             patchConv(convId, { isLoading: false });
@@ -244,8 +244,8 @@ export const ConversationStoreProvider: React.FC<{
       patchConv(convId, { isLoading: false });
       return [];
     },
-    // Only patchConv is needed — convStates read via ref
-    [patchConv]
+    // convStates is needed to check if already loaded/streaming
+    [patchConv, convStates],
   );
 
   // ── startStream ──────────────────────────────────────────────────────────
@@ -309,7 +309,7 @@ export const ConversationStoreProvider: React.FC<{
             [conversationId]: {
               ...state,
               messages: state.messages.map((m) =>
-                m.id === assistantTempId ? updater(m) : m
+                m.id === assistantTempId ? updater(m) : m,
               ),
             },
           };
@@ -359,7 +359,7 @@ export const ConversationStoreProvider: React.FC<{
                   .reverse()
                   .findIndex(
                     (s) =>
-                      s.tool === event.toolName && s.status === "executing"
+                      s.tool === event.toolName && s.status === "executing",
                   );
                 if (lastIdx !== -1) {
                   const actualIdx = acc.steps.length - 1 - lastIdx;
@@ -377,7 +377,7 @@ export const ConversationStoreProvider: React.FC<{
                 }));
               }
             },
-            controller.signal
+            controller.signal,
           );
 
           // ── Save to server ───────────────────────────────────────────────
@@ -399,7 +399,7 @@ export const ConversationStoreProvider: React.FC<{
                   executionSteps: acc.steps,
                   parentMessageId,
                 }),
-              }
+              },
             );
 
             if (assistantResp.ok) {
@@ -415,7 +415,7 @@ export const ConversationStoreProvider: React.FC<{
                     messages: state.messages.map((m) =>
                       m.id === assistantTempId
                         ? { ...m, id: saved.id, isPartialContent: false }
-                        : m
+                        : m,
                     ),
                   },
                 };
@@ -453,7 +453,7 @@ export const ConversationStoreProvider: React.FC<{
         }
       })();
     },
-    []
+    [],
   );
 
   // ── Context value ─────────────────────────────────────────────────────────
@@ -482,7 +482,7 @@ export const useConversationStore = (): ConversationStoreContextType => {
   const ctx = useContext(ConversationStoreContext);
   if (!ctx) {
     throw new Error(
-      "useConversationStore must be used within ConversationStoreProvider"
+      "useConversationStore must be used within ConversationStoreProvider",
     );
   }
   return ctx;
