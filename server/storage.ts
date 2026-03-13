@@ -56,7 +56,6 @@ export interface Message {
     };
   }>;
   executionSteps?: any[];
-  parentMessageId?: string; // ID of the message this is a response to
   rootMessageId?: string; // ID of the root message of this conversation
   children?: string[]; // IDs of child messages (for tree traversal)
   isPartialContent?: boolean; // true when streaming, false when complete
@@ -68,10 +67,6 @@ export interface Conversation {
   agentId?: string; // Optional - which agent this conversation is with
   title: string;
   messages: Message[];
-  messageGraph?: Record<
-    string,
-    { parentMessageId?: string; children: string[] }
-  >; // DAG structure for tree navigation
   rootMessageId?: string; // ID of the first message in the conversation
   createdAt: string;
   updatedAt: string;
@@ -268,7 +263,6 @@ class ConversationsStorage {
       agentId,
       title,
       messages: [],
-      messageGraph: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -297,7 +291,6 @@ class ConversationsStorage {
     content: string,
     executionSteps?: any[],
     reasoning?: string,
-    parentMessageId?: string,
   ): Message {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
@@ -314,11 +307,6 @@ class ConversationsStorage {
       conversation.rootMessageId = rootMessageId;
     }
 
-    // Initialize messageGraph if needed
-    if (!conversation.messageGraph) {
-      conversation.messageGraph = {};
-    }
-
     const message: Message = {
       id: messageId,
       role,
@@ -326,23 +314,8 @@ class ConversationsStorage {
       timestamp: new Date().toISOString(),
       executionSteps,
       reasoning,
-      parentMessageId,
       rootMessageId,
       isPartialContent: false,
-    };
-
-    // Add to messageGraph: update parent's children and add new node
-    if (parentMessageId) {
-      if (!conversation.messageGraph[parentMessageId]) {
-        conversation.messageGraph[parentMessageId] = { children: [] };
-      }
-      conversation.messageGraph[parentMessageId].children.push(messageId);
-    }
-
-    // Add new message to graph
-    conversation.messageGraph[messageId] = {
-      parentMessageId: parentMessageId || undefined,
-      children: [],
     };
 
     conversation.messages.push(message);
@@ -414,121 +387,6 @@ class ConversationsStorage {
     conversation.updatedAt = new Date().toISOString();
     this.debouncedSave();
     return conversation;
-  }
-
-  /**
-   * Get the message tree for a conversation starting from root.
-   * Returns a map of messageId -> { parentMessageId, children, message }
-   */
-  getMessageTree(
-    conversationId: string,
-  ): Record<
-    string,
-    { parentMessageId?: string; children: string[]; message?: Message }
-  > {
-    const conversation = this.conversations.get(conversationId);
-    if (!conversation) {
-      throw new Error(`Conversation ${conversationId} not found`);
-    }
-
-    // Build a map of all messages by ID
-    const messageMap: Record<string, Message> = {};
-
-    // Collect all messages
-    if (conversation.messages) {
-      conversation.messages.forEach((m) => {
-        messageMap[m.id] = m;
-      });
-    }
-
-    // Build tree from messageGraph
-    const tree: Record<
-      string,
-      { parentMessageId?: string; children: string[]; message?: Message }
-    > = {};
-
-    // Initialize from messageGraph if available
-    if (conversation.messageGraph) {
-      Object.keys(conversation.messageGraph).forEach((msgId) => {
-        tree[msgId] = {
-          parentMessageId: conversation.messageGraph![msgId].parentMessageId,
-          children: conversation.messageGraph![msgId].children,
-        };
-      });
-    }
-
-    // Add messages to tree nodes
-    Object.keys(tree).forEach((msgId) => {
-      if (messageMap[msgId]) {
-        tree[msgId].message = messageMap[msgId];
-      }
-    });
-
-    return tree;
-  }
-
-  /**
-   * Get all descendant messages from a given message ID
-   */
-  getMessageDescendants(conversationId: string, messageId: string): Message[] {
-    const conversation = this.conversations.get(conversationId);
-    if (!conversation) {
-      throw new Error(`Conversation ${conversationId} not found`);
-    }
-
-    if (!conversation.messageGraph || !conversation.messageGraph[messageId]) {
-      return [];
-    }
-
-    const descendants: Message[] = [];
-    const visited = new Set<string>();
-    const queue = [...conversation.messageGraph[messageId].children];
-
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      if (visited.has(currentId)) continue;
-      visited.add(currentId);
-
-      // Find the message
-      const message = conversation.messages.find((m) => m.id === currentId);
-
-      if (message) {
-        descendants.push(message);
-        // Add children to queue
-        if (conversation.messageGraph[currentId]) {
-          queue.push(...conversation.messageGraph[currentId].children);
-        }
-      }
-    }
-
-    return descendants;
-  }
-
-  /**
-   * Get the path from root to a specific message
-   */
-  getMessagePath(conversationId: string, messageId: string): Message[] {
-    const conversation = this.conversations.get(conversationId);
-    if (!conversation) {
-      throw new Error(`Conversation ${conversationId} not found`);
-    }
-
-    const path: Message[] = [];
-    let currentId: string | undefined = messageId;
-
-    while (currentId) {
-      // Find message
-      const message = conversation.messages.find((m) => m.id === currentId);
-
-      if (message) {
-        path.unshift(message);
-        currentId = message.parentMessageId;
-      } else {
-        break;
-      }
-    }
-
-    return path;
   }
 }
 
@@ -1026,7 +884,6 @@ export const storage = {
       content: string,
       executionSteps?: any[],
       reasoning?: string,
-      parentMessageId?: string,
     ) =>
       getConversationsStorage().addMessage(
         conversationId,
@@ -1034,7 +891,6 @@ export const storage = {
         content,
         executionSteps,
         reasoning,
-        parentMessageId,
       ),
     updateTitle: (conversationId: string, title: string) =>
       getConversationsStorage().updateTitle(conversationId, title),
@@ -1052,16 +908,6 @@ export const storage = {
       ),
     truncateMessages: (conversationId: string, keepUpToIndex: number) =>
       getConversationsStorage().truncateMessages(conversationId, keepUpToIndex),
-    // Tree traversal
-    getMessageTree: (conversationId: string) =>
-      getConversationsStorage().getMessageTree(conversationId),
-    getMessageDescendants: (conversationId: string, messageId: string) =>
-      getConversationsStorage().getMessageDescendants(
-        conversationId,
-        messageId,
-      ),
-    getMessagePath: (conversationId: string, messageId: string) =>
-      getConversationsStorage().getMessagePath(conversationId, messageId),
   },
   agents: {
     create: (
