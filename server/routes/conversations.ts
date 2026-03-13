@@ -499,6 +499,25 @@ export const handleEditMessage: RequestHandler = (req, res) => {
       message.parentMessageId,
     );
 
+    // Update messageGraph to track the divergence:
+    // The parent message now has a new child in the new branch
+    if (message.parentMessageId && conversation.messageGraph) {
+      const parentNode = conversation.messageGraph[message.parentMessageId];
+      if (parentNode) {
+        // Add the new branch root marker to parent's children
+        // This marks that there's a divergence from this point
+        const branchMarkerId = `branch_${newBranchId}_start`;
+        if (!parentNode.children.includes(branchMarkerId)) {
+          parentNode.children.push(branchMarkerId);
+        }
+        // Track the branch marker in the graph
+        conversation.messageGraph[branchMarkerId] = {
+          parentMessageId: message.parentMessageId,
+          children: [messageId], // The edited message becomes a child of the branch marker
+        };
+      }
+    }
+
     // Switch to the new branch
     storage.conversations.switchBranch(conversationId, newBranchId);
 
@@ -573,6 +592,24 @@ export const handleRegenerateMessage: RequestHandler = (req, res) => {
       newBranchId,
       message.parentMessageId,
     );
+
+    // Update messageGraph to track the divergence:
+    // The parent message now has a new child path for regeneration
+    if (message.parentMessageId && conversation.messageGraph) {
+      const parentNode = conversation.messageGraph[message.parentMessageId];
+      if (parentNode) {
+        // Add the new branch root marker to parent's children
+        const branchMarkerId = `branch_${newBranchId}_start`;
+        if (!parentNode.children.includes(branchMarkerId)) {
+          parentNode.children.push(branchMarkerId);
+        }
+        // Track the branch marker in the graph
+        conversation.messageGraph[branchMarkerId] = {
+          parentMessageId: message.parentMessageId,
+          children: [], // Will be populated when new message is added
+        };
+      }
+    }
 
     // Switch to the new branch
     storage.conversations.switchBranch(conversationId, newBranchId);

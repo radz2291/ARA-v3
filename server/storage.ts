@@ -56,9 +56,11 @@ export interface Message {
     };
   }>;
   executionSteps?: any[];
-  parentMessageId?: string; // NEW - ID of the message this is a response to
-  branchId?: string; // NEW - which branch this message belongs to
-  isPartialContent?: boolean; // NEW - true when streaming, false when complete
+  parentMessageId?: string; // ID of the message this is a response to
+  rootMessageId?: string; // ID of the root message of this conversation
+  children?: string[]; // IDs of child messages (for tree traversal)
+  branchId?: string; // which branch this message belongs to
+  isPartialContent?: boolean; // true when streaming, false when complete
 }
 
 export interface Conversation {
@@ -67,9 +69,13 @@ export interface Conversation {
   agentId?: string; // Optional - which agent this conversation is with
   title: string;
   messages: Message[]; // Current branch messages
-  branches?: Record<string, Message[]>; // NEW - alternative branches keyed by branchId
-  currentBranchId?: string; // NEW - which branch is currently active
-  messageGraph?: Record<string, { children: string[] }>; // NEW - tree structure for navigation
+  branches?: Record<string, Message[]>; // alternative branches keyed by branchId
+  currentBranchId?: string; // which branch is currently active
+  messageGraph?: Record<
+    string,
+    { parentMessageId?: string; children: string[] }
+  >; // DAG structure for tree navigation
+  rootMessageId?: string; // ID of the first message in the conversation
   createdAt: string;
   updatedAt: string;
 }
@@ -141,7 +147,10 @@ class SessionsStorage {
     try {
       ensureDataDir();
       const sessions = Array.from(this.sessions.values());
-      await fsPromises.writeFile(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+      await fsPromises.writeFile(
+        SESSIONS_FILE,
+        JSON.stringify(sessions, null, 2),
+      );
     } catch (error) {
       console.error("Error saving sessions:", error);
     }
@@ -233,7 +242,10 @@ class ConversationsStorage {
     try {
       ensureDataDir();
       const conversations = Array.from(this.conversations.values());
-      await fsPromises.writeFile(CONVERSATIONS_FILE, JSON.stringify(conversations, null, 2));
+      await fsPromises.writeFile(
+        CONVERSATIONS_FILE,
+        JSON.stringify(conversations, null, 2),
+      );
     } catch (error) {
       console.error("Error saving conversations:", error);
     }
@@ -259,6 +271,8 @@ class ConversationsStorage {
       agentId,
       title,
       messages: [],
+      branches: {},
+      messageGraph: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -277,7 +291,7 @@ class ConversationsStorage {
       .filter((c) => c.sessionId === sessionId)
       .sort(
         (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
   }
 
@@ -288,23 +302,53 @@ class ConversationsStorage {
     executionSteps?: any[],
     reasoning?: string,
     parentMessageId?: string,
-    branchId?: string
+    branchId?: string,
   ): Message {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} not found`);
     }
 
+    const messageId = randomUUID();
+
+    // Determine root message ID (first message in conversation)
+    let rootMessageId = conversation.rootMessageId;
+    if (!rootMessageId) {
+      // This is the first message in the conversation
+      rootMessageId = messageId;
+      conversation.rootMessageId = rootMessageId;
+    }
+
+    // Initialize messageGraph if needed
+    if (!conversation.messageGraph) {
+      conversation.messageGraph = {};
+    }
+
     const message: Message = {
-      id: randomUUID(),
+      id: messageId,
       role,
       content,
       timestamp: new Date().toISOString(),
       executionSteps,
       reasoning,
       parentMessageId,
+      rootMessageId,
       branchId: branchId || conversation.currentBranchId || "default",
-      isPartialContent: false
+      isPartialContent: false,
+    };
+
+    // Add to messageGraph: update parent's children and add new node
+    if (parentMessageId) {
+      if (!conversation.messageGraph[parentMessageId]) {
+        conversation.messageGraph[parentMessageId] = { children: [] };
+      }
+      conversation.messageGraph[parentMessageId].children.push(messageId);
+    }
+
+    // Add new message to graph
+    conversation.messageGraph[messageId] = {
+      parentMessageId: parentMessageId || undefined,
+      children: [],
     };
 
     conversation.messages.push(message);
@@ -350,21 +394,30 @@ class ConversationsStorage {
     return conversation.branches?.[branchId] || [];
   }
 
-  createBranch(conversationId: string, branchId: string, parentMessageId?: string): string {
+  createBranch(
+    conversationId: string,
+    branchId: string,
+    parentMessageId?: string,
+  ): string {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} not found`);
     }
 
-    // Initialize branches map if not exists
+    // Initialize branches and messageGraph if not exists
     if (!conversation.branches) {
       conversation.branches = {};
+    }
+    if (!conversation.messageGraph) {
+      conversation.messageGraph = {};
     }
 
     // Get messages up to parent message (or all if no parent)
     let branchMessages: Message[] = [];
     if (parentMessageId) {
-      const parentIndex = conversation.messages.findIndex((m) => m.id === parentMessageId);
+      const parentIndex = conversation.messages.findIndex(
+        (m) => m.id === parentMessageId,
+      );
       if (parentIndex >= 0) {
         branchMessages = conversation.messages.slice(0, parentIndex + 1);
       }
@@ -373,6 +426,17 @@ class ConversationsStorage {
     }
 
     conversation.branches[branchId] = branchMessages;
+
+    // Add new node to messageGraph for the branch (representing a new child path)
+    // When creating a branch from a parent message, the new branch starts from that parent
+    if (parentMessageId) {
+      const newBranchNodeId = `branch_${branchId}_root`;
+      conversation.messageGraph[newBranchNodeId] = {
+        parentMessageId,
+        children: [],
+      };
+    }
+
     conversation.updatedAt = new Date().toISOString();
     this.debouncedSave();
     return branchId;
@@ -399,7 +463,8 @@ class ConversationsStorage {
 
     // Switch to new branch
     if (branchId === "default") {
-      conversation.messages = conversation.branches["default"] || conversation.messages;
+      conversation.messages =
+        conversation.branches["default"] || conversation.messages;
     } else {
       conversation.messages = branchMessages || [];
     }
@@ -447,13 +512,19 @@ class ConversationsStorage {
     return deleted;
   }
 
-  updateMessage(conversationId: string, messageId: string, updates: Partial<Message>): Message {
+  updateMessage(
+    conversationId: string,
+    messageId: string,
+    updates: Partial<Message>,
+  ): Message {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} not found`);
     }
 
-    const messageIndex = conversation.messages.findIndex((m) => m.id === messageId);
+    const messageIndex = conversation.messages.findIndex(
+      (m) => m.id === messageId,
+    );
     if (messageIndex === -1) {
       throw new Error(`Message ${messageId} not found`);
     }
@@ -473,7 +544,10 @@ class ConversationsStorage {
    * the given index, then persist. Used by edit and regenerate to ensure the
    * truncated state is saved even if no further addMessage call follows.
    */
-  truncateMessages(conversationId: string, keepUpToIndex: number): Conversation {
+  truncateMessages(
+    conversationId: string,
+    keepUpToIndex: number,
+  ): Conversation {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} not found`);
@@ -482,6 +556,145 @@ class ConversationsStorage {
     conversation.updatedAt = new Date().toISOString();
     this.debouncedSave();
     return conversation;
+  }
+
+  /**
+   * Get the message tree for a conversation starting from root.
+   * Returns a map of messageId -> { parentMessageId, children, message }
+   */
+  getMessageTree(
+    conversationId: string,
+  ): Record<
+    string,
+    { parentMessageId?: string; children: string[]; message?: Message }
+  > {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    // Build a map of all messages by ID
+    const messageMap: Record<string, Message> = {};
+    const allMessages = new Set<Message>();
+
+    // Collect all messages from current branch and all saved branches
+    if (conversation.messages) {
+      conversation.messages.forEach((m) => {
+        messageMap[m.id] = m;
+        allMessages.add(m);
+      });
+    }
+    if (conversation.branches) {
+      Object.values(conversation.branches).forEach((branchMsgs) => {
+        branchMsgs.forEach((m) => {
+          if (!messageMap[m.id]) {
+            messageMap[m.id] = m;
+            allMessages.add(m);
+          }
+        });
+      });
+    }
+
+    // Build tree from messageGraph
+    const tree: Record<
+      string,
+      { parentMessageId?: string; children: string[]; message?: Message }
+    > = {};
+
+    // Initialize from messageGraph if available
+    if (conversation.messageGraph) {
+      Object.keys(conversation.messageGraph).forEach((msgId) => {
+        tree[msgId] = {
+          parentMessageId: conversation.messageGraph![msgId].parentMessageId,
+          children: conversation.messageGraph![msgId].children,
+        };
+      });
+    }
+
+    // Add messages to tree nodes
+    Object.keys(tree).forEach((msgId) => {
+      if (messageMap[msgId]) {
+        tree[msgId].message = messageMap[msgId];
+      }
+    });
+
+    return tree;
+  }
+
+  /**
+   * Get all descendant messages from a given message ID (for branch traversal)
+   */
+  getMessageDescendants(conversationId: string, messageId: string): Message[] {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    if (!conversation.messageGraph || !conversation.messageGraph[messageId]) {
+      return [];
+    }
+
+    const descendants: Message[] = [];
+    const visited = new Set<string>();
+    const queue = [...conversation.messageGraph[messageId].children];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      if (visited.has(currentId)) continue;
+      visited.add(currentId);
+
+      // Find the message in current branch or saved branches
+      let message = conversation.messages.find((m) => m.id === currentId);
+      if (!message && conversation.branches) {
+        for (const branch of Object.values(conversation.branches)) {
+          message = branch.find((m) => m.id === currentId);
+          if (message) break;
+        }
+      }
+
+      if (message) {
+        descendants.push(message);
+        // Add children to queue
+        if (conversation.messageGraph[currentId]) {
+          queue.push(...conversation.messageGraph[currentId].children);
+        }
+      }
+    }
+
+    return descendants;
+  }
+
+  /**
+   * Get the path from root to a specific message
+   */
+  getMessagePath(conversationId: string, messageId: string): Message[] {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
+    const path: Message[] = [];
+    let currentId: string | undefined = messageId;
+
+    while (currentId) {
+      // Find message in current branch or saved branches
+      let message = conversation.messages.find((m) => m.id === currentId);
+      if (!message && conversation.branches) {
+        for (const branch of Object.values(conversation.branches)) {
+          message = branch.find((m) => m.id === currentId);
+          if (message) break;
+        }
+      }
+
+      if (message) {
+        path.unshift(message);
+        currentId = message.parentMessageId;
+      } else {
+        break;
+      }
+    }
+
+    return path;
   }
 }
 
@@ -537,7 +750,7 @@ class AgentsStorage {
     description: string,
     persona: string,
     systemInstructions: string,
-    toolIds: string[] = []
+    toolIds: string[] = [],
   ): Agent {
     const agent: Agent = {
       id: randomUUID(),
@@ -561,13 +774,14 @@ class AgentsStorage {
 
   list(): Agent[] {
     return Array.from(this.agents.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
   }
 
   update(
     agentId: string,
-    updates: Partial<Omit<Agent, "id" | "createdAt">>
+    updates: Partial<Omit<Agent, "id" | "createdAt">>,
   ): Agent {
     const agent = this.agents.get(agentId);
     if (!agent) {
@@ -624,7 +838,10 @@ class WorkspacesStorage {
     try {
       ensureDataDir();
       const workspaces = Array.from(this.workspaces.values());
-      await fsPromises.writeFile(WORKSPACES_FILE, JSON.stringify(workspaces, null, 2));
+      await fsPromises.writeFile(
+        WORKSPACES_FILE,
+        JSON.stringify(workspaces, null, 2),
+      );
     } catch (error) {
       console.error("Error saving workspaces:", error);
     }
@@ -643,7 +860,12 @@ class WorkspacesStorage {
     }, 50);
   }
 
-  create(name: string, description: string, agentIds: string[], leadAgentId?: string): Workspace {
+  create(
+    name: string,
+    description: string,
+    agentIds: string[],
+    leadAgentId?: string,
+  ): Workspace {
     const workspace: Workspace = {
       id: randomUUID(),
       name,
@@ -667,13 +889,14 @@ class WorkspacesStorage {
 
   list(): Workspace[] {
     return Array.from(this.workspaces.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
   }
 
   update(
     workspaceId: string,
-    updates: Partial<Omit<Workspace, "id" | "createdAt">>
+    updates: Partial<Omit<Workspace, "id" | "createdAt">>,
   ): Workspace {
     const workspace = this.workspaces.get(workspaceId);
     if (!workspace) {
@@ -728,12 +951,18 @@ class WorkspacesStorage {
     return workspace;
   }
 
-  updateContext(workspaceId: string, contextUpdates: Record<string, unknown>): Workspace {
+  updateContext(
+    workspaceId: string,
+    contextUpdates: Record<string, unknown>,
+  ): Workspace {
     const workspace = this.workspaces.get(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
-    workspace.executionContext = { ...workspace.executionContext, ...contextUpdates };
+    workspace.executionContext = {
+      ...workspace.executionContext,
+      ...contextUpdates,
+    };
     workspace.updatedAt = new Date().toISOString();
     this.debouncedSave();
     return workspace;
@@ -794,10 +1023,11 @@ class ToolsStorage {
     inputSchema: Record<string, unknown>,
     outputSchema: Record<string, unknown>,
     assignedAgentIds: string[] = [],
-    functionName?: string
+    functionName?: string,
   ): Tool {
     // Auto-generate functionName if not provided
-    const generatedFunctionName = functionName || name.replace(/\s+/g, "_").toLowerCase();
+    const generatedFunctionName =
+      functionName || name.replace(/\s+/g, "_").toLowerCase();
 
     const tool: Tool = {
       id: randomUUID(),
@@ -823,7 +1053,8 @@ class ToolsStorage {
 
   list(): Tool[] {
     return Array.from(this.tools.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
   }
 
@@ -837,7 +1068,7 @@ class ToolsStorage {
 
   update(
     toolId: string,
-    updates: Partial<Omit<Tool, "id" | "createdAt">>
+    updates: Partial<Omit<Tool, "id" | "createdAt">>,
   ): Tool {
     const tool = this.tools.get(toolId);
     if (!tool) {
@@ -875,7 +1106,9 @@ class ToolsStorage {
     if (!tool) {
       throw new Error(`Tool ${toolId} not found`);
     }
-    tool.assignedAgentIds = tool.assignedAgentIds.filter((id) => id !== agentId);
+    tool.assignedAgentIds = tool.assignedAgentIds.filter(
+      (id) => id !== agentId,
+    );
     tool.updatedAt = new Date().toISOString();
     this.debouncedSave();
     return tool;
@@ -939,11 +1172,11 @@ export const storage = {
   sessions: {
     create: () => getSessionsStorage().create(),
     get: (sessionId: string) => getSessionsStorage().get(sessionId),
-    getOrCreate: (sessionId?: string) => getSessionsStorage().getOrCreate(sessionId),
+    getOrCreate: (sessionId?: string) =>
+      getSessionsStorage().getOrCreate(sessionId),
     setConfig: (sessionId: string, config: APIConfig) =>
       getSessionsStorage().setConfig(sessionId, config),
-    getConfig: (sessionId: string) =>
-      getSessionsStorage().getConfig(sessionId),
+    getConfig: (sessionId: string) => getSessionsStorage().getConfig(sessionId),
     delete: (sessionId: string) => getSessionsStorage().delete(sessionId),
   },
   conversations: {
@@ -960,8 +1193,17 @@ export const storage = {
       executionSteps?: any[],
       reasoning?: string,
       parentMessageId?: string,
-      branchId?: string
-    ) => getConversationsStorage().addMessage(conversationId, role, content, executionSteps, reasoning, parentMessageId, branchId),
+      branchId?: string,
+    ) =>
+      getConversationsStorage().addMessage(
+        conversationId,
+        role,
+        content,
+        executionSteps,
+        reasoning,
+        parentMessageId,
+        branchId,
+      ),
     updateTitle: (conversationId: string, title: string) =>
       getConversationsStorage().updateTitle(conversationId, title),
     delete: (conversationId: string) =>
@@ -969,18 +1211,44 @@ export const storage = {
     // Branch management
     getBranchMessages: (conversationId: string, branchId: string) =>
       getConversationsStorage().getBranchMessages(conversationId, branchId),
-    createBranch: (conversationId: string, branchId: string, parentMessageId?: string) =>
-      getConversationsStorage().createBranch(conversationId, branchId, parentMessageId),
+    createBranch: (
+      conversationId: string,
+      branchId: string,
+      parentMessageId?: string,
+    ) =>
+      getConversationsStorage().createBranch(
+        conversationId,
+        branchId,
+        parentMessageId,
+      ),
     switchBranch: (conversationId: string, branchId: string) =>
       getConversationsStorage().switchBranch(conversationId, branchId),
     getAllBranches: (conversationId: string) =>
       getConversationsStorage().getAllBranches(conversationId),
     deleteBranch: (conversationId: string, branchId: string) =>
       getConversationsStorage().deleteBranch(conversationId, branchId),
-    updateMessage: (conversationId: string, messageId: string, updates: Partial<Message>) =>
-      getConversationsStorage().updateMessage(conversationId, messageId, updates),
+    updateMessage: (
+      conversationId: string,
+      messageId: string,
+      updates: Partial<Message>,
+    ) =>
+      getConversationsStorage().updateMessage(
+        conversationId,
+        messageId,
+        updates,
+      ),
     truncateMessages: (conversationId: string, keepUpToIndex: number) =>
       getConversationsStorage().truncateMessages(conversationId, keepUpToIndex),
+    // Tree traversal
+    getMessageTree: (conversationId: string) =>
+      getConversationsStorage().getMessageTree(conversationId),
+    getMessageDescendants: (conversationId: string, messageId: string) =>
+      getConversationsStorage().getMessageDescendants(
+        conversationId,
+        messageId,
+      ),
+    getMessagePath: (conversationId: string, messageId: string) =>
+      getConversationsStorage().getMessagePath(conversationId, messageId),
   },
   agents: {
     create: (
@@ -988,21 +1256,37 @@ export const storage = {
       description: string,
       persona: string,
       systemInstructions: string,
-      toolIds?: string[]
-    ) => getAgentsStorage().create(name, description, persona, systemInstructions, toolIds || []),
+      toolIds?: string[],
+    ) =>
+      getAgentsStorage().create(
+        name,
+        description,
+        persona,
+        systemInstructions,
+        toolIds || [],
+      ),
     get: (agentId: string) => getAgentsStorage().get(agentId),
     list: () => getAgentsStorage().list(),
-    update: (agentId: string, updates: Partial<Omit<Agent, "id" | "createdAt">>) =>
-      getAgentsStorage().update(agentId, updates),
+    update: (
+      agentId: string,
+      updates: Partial<Omit<Agent, "id" | "createdAt">>,
+    ) => getAgentsStorage().update(agentId, updates),
     delete: (agentId: string) => getAgentsStorage().delete(agentId),
   },
   workspaces: {
-    create: (name: string, description: string, agentIds: string[], leadAgentId?: string) =>
+    create: (
+      name: string,
+      description: string,
+      agentIds: string[],
+      leadAgentId?: string,
+    ) =>
       getWorkspacesStorage().create(name, description, agentIds, leadAgentId),
     get: (workspaceId: string) => getWorkspacesStorage().get(workspaceId),
     list: () => getWorkspacesStorage().list(),
-    update: (workspaceId: string, updates: Partial<Omit<Workspace, "id" | "createdAt">>) =>
-      getWorkspacesStorage().update(workspaceId, updates),
+    update: (
+      workspaceId: string,
+      updates: Partial<Omit<Workspace, "id" | "createdAt">>,
+    ) => getWorkspacesStorage().update(workspaceId, updates),
     delete: (workspaceId: string) => getWorkspacesStorage().delete(workspaceId),
     addFile: (workspaceId: string, filePath: string, content: string) =>
       getWorkspacesStorage().addFile(workspaceId, filePath, content),
@@ -1010,8 +1294,10 @@ export const storage = {
       getWorkspacesStorage().getFile(workspaceId, filePath),
     deleteFile: (workspaceId: string, filePath: string) =>
       getWorkspacesStorage().deleteFile(workspaceId, filePath),
-    updateContext: (workspaceId: string, contextUpdates: Record<string, unknown>) =>
-      getWorkspacesStorage().updateContext(workspaceId, contextUpdates),
+    updateContext: (
+      workspaceId: string,
+      contextUpdates: Record<string, unknown>,
+    ) => getWorkspacesStorage().updateContext(workspaceId, contextUpdates),
   },
   tools: {
     create: (
@@ -1021,14 +1307,25 @@ export const storage = {
       inputSchema: Record<string, unknown>,
       outputSchema: Record<string, unknown>,
       assignedAgentIds?: string[],
-      functionName?: string
-    ) => getToolsStorage().create(name, description, type, inputSchema, outputSchema, assignedAgentIds, functionName),
+      functionName?: string,
+    ) =>
+      getToolsStorage().create(
+        name,
+        description,
+        type,
+        inputSchema,
+        outputSchema,
+        assignedAgentIds,
+        functionName,
+      ),
     get: (toolId: string) => getToolsStorage().get(toolId),
     list: () => getToolsStorage().list(),
     listByType: (type: Tool["type"]) => getToolsStorage().listByType(type),
     listByAgent: (agentId: string) => getToolsStorage().listByAgent(agentId),
-    update: (toolId: string, updates: Partial<Omit<Tool, "id" | "createdAt">>) =>
-      getToolsStorage().update(toolId, updates),
+    update: (
+      toolId: string,
+      updates: Partial<Omit<Tool, "id" | "createdAt">>,
+    ) => getToolsStorage().update(toolId, updates),
     assignToAgent: (toolId: string, agentId: string) =>
       getToolsStorage().assignToAgent(toolId, agentId),
     removeFromAgent: (toolId: string, agentId: string) =>
