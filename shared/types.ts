@@ -33,7 +33,6 @@ export interface Message {
   tool_calls?: ToolCall[];
   executionSteps?: ExecutionStep[];
   parentMessageId?: string;
-  branchId?: string;
   isPartialContent?: boolean;
 }
 
@@ -43,8 +42,6 @@ export interface Conversation {
   agentId?: string;
   title: string;
   messages: Message[];
-  branches?: Record<string, Message[]>;
-  currentBranchId?: string;
   messageGraph?: Record<string, { children: string[] }>;
   createdAt: string;
   updatedAt: string;
@@ -123,7 +120,6 @@ export const MessageSchema = z.object({
   tool_calls: z.array(ToolCallSchema).optional(),
   executionSteps: z.array(ExecutionStepSchema).optional(),
   parentMessageId: z.string().optional(),
-  branchId: z.string().optional(),
   isPartialContent: z.boolean().optional(),
 });
 
@@ -139,8 +135,6 @@ export const ConversationSchema = z.object({
   agentId: z.string().optional(),
   title: z.string(),
   messages: z.array(MessageSchema),
-  branches: z.record(z.array(MessageSchema)).optional(),
-  currentBranchId: z.string().optional(),
   messageGraph: z
     .record(z.object({ children: z.array(z.string()) }))
     .optional(),

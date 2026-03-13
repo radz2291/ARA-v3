@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Send, AlertCircle, Users, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,13 +54,6 @@ export default function Chat() {
     setCurrentConversationId: setContextConversationId,
     conversations,
     renameConversation,
-    currentBranchId,
-    availableBranches,
-    branchMessageIds,
-    switchBranch,
-    editMessage,
-    regenerateMessage,
-    loadBranches,
   } = useSession();
 
   const {
@@ -194,16 +187,6 @@ export default function Chat() {
     }
   };
 
-  // ── Reload messages from server (used after edit/regen) ─────────────────
-  const reloadConversationMessages = useCallback(async () => {
-    if (!currentConversationId || !sessionId) return [];
-    return loadMessages(
-      currentConversationId,
-      sessionId,
-      /* forceReload */ true,
-    );
-  }, [currentConversationId, sessionId, loadMessages]);
-
   // ── Send message ─────────────────────────────────────────────────────────
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -324,8 +307,14 @@ export default function Chat() {
     const convId = currentConversationId;
 
     try {
-      const result = await regenerateMessage(messageId);
-      if (!result) return;
+      const response = await fetch(
+        `/api/sessions/${sessionId}/conversations/${convId}/messages/${messageId}/regenerate`,
+        { method: "POST" },
+      );
+      if (!response.ok) {
+        throw new Error("Regeneration failed");
+      }
+      const result = await response.json();
 
       // Use the truncated messages returned directly from the server response.
       // This avoids a secondary GET request that could race with the initial load fetch.
@@ -375,14 +364,32 @@ export default function Chat() {
     const convId = currentConversationId;
 
     try {
-      const result = await editMessage(editingMessageId, editContent);
+      const response = await fetch(
+        `/api/sessions/${sessionId}/conversations/${convId}/messages/${editingMessageId}/edit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: editContent }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error("Edit failed");
+      }
+      const result = await response.json();
       setIsEditDialogOpen(false);
       setEditingMessageId(null);
 
-      if (result) {
-        // Use the truncated messages returned directly from the server response.
+      if (result.message) {
+        // Get the updated message
+        const updatedMessage = result.message;
+
+        // Reload all messages to get the current state
+        const messagesResponse = await fetch(
+          `/api/sessions/${sessionId}/conversations/${convId}`,
+        );
+        const messagesData = await messagesResponse.json();
         const truncatedMessages: import("@/contexts/ConversationStore").Message[] =
-          result.messages.map((m: any, idx: number) => ({
+          messagesData.messages.map((m: any, idx: number) => ({
             ...m,
             id: m.id || `msg-${Date.now()}-${idx}`,
           }));
@@ -440,70 +447,6 @@ export default function Chat() {
     textarea.style.height = "auto";
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + "px";
   };
-
-  const handleBranchChange = async (branchId: string) => {
-    await switchBranch(branchId);
-    await loadBranches();
-    await reloadConversationMessages();
-  };
-
-  /**
-   * Compute per-message branch points.
-   * Returns a Map<messageIndex, sortedBranchIds[]> where each entry marks a
-   * position in the current branch where another branch diverges.
-   */
-  const branchPoints = useMemo<Map<number, string[]>>(() => {
-    const currentId = currentBranchId || "default";
-    const currentIds = branchMessageIds[currentId];
-
-    if (!currentIds || Object.keys(branchMessageIds).length <= 1)
-      return new Map();
-
-    const points = new Map<number, string[]>();
-
-    for (const [branchId, msgIds] of Object.entries(branchMessageIds)) {
-      if (branchId === currentId) continue;
-
-      const minLen = Math.min(currentIds.length, msgIds.length);
-      let divergenceIdx = -1;
-
-      for (let i = 0; i < minLen; i++) {
-        if (currentIds[i] !== msgIds[i]) {
-          divergenceIdx = i;
-          break;
-        }
-      }
-
-      if (divergenceIdx === -1 && currentIds.length !== msgIds.length) {
-        divergenceIdx = minLen;
-      }
-
-      if (divergenceIdx >= 0) {
-        if (!points.has(divergenceIdx)) {
-          points.set(divergenceIdx, [currentId]);
-        }
-        const existing = points.get(divergenceIdx)!;
-        if (!existing.includes(branchId)) {
-          existing.push(branchId);
-        }
-      }
-    }
-
-    const sortBranchIds = (ids: string[]) =>
-      [...ids].sort((a, b) => {
-        if (a === "default") return -1;
-        if (b === "default") return 1;
-        const tA = parseInt(a.split("_").pop() || "0", 10);
-        const tB = parseInt(b.split("_").pop() || "0", 10);
-        return tA - tB;
-      });
-
-    const sorted = new Map<number, string[]>();
-    for (const [idx, ids] of points) {
-      sorted.set(idx, sortBranchIds(ids));
-    }
-    return sorted;
-  }, [branchMessageIds, currentBranchId]);
 
   // ─── Not configured screen ────────────────────────────────────────────────
   if (!isConfigured) {
@@ -590,9 +533,6 @@ export default function Chat() {
         <MessageList
           messages={messages}
           isLoadingConversation={isLoadingConversation}
-          branchPoints={branchPoints}
-          currentBranchId={currentBranchId}
-          onBranchChange={handleBranchChange}
           onEdit={(messageId) => {
             const msg = messages.find((m) => m.id === messageId);
             if (!msg) return;
@@ -610,7 +550,7 @@ export default function Chat() {
             <DialogHeader>
               <DialogTitle>Edit Message</DialogTitle>
               <DialogDescription>
-                Editing will create a new branch and generate a fresh response.
+                Editing will update the message and generate a fresh response.
               </DialogDescription>
             </DialogHeader>
             <div>

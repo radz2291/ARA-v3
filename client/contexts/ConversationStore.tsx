@@ -41,7 +41,6 @@ export interface Message {
   timestamp: string;
   executionSteps?: ExecutionStep[];
   parentMessageId?: string;
-  branchId?: string;
   isPartialContent?: boolean;
 }
 

@@ -24,18 +24,15 @@ interface SessionContextType {
   conversations: Conversation[];
   isLoadingConversations: boolean;
   loadConversations: () => Promise<void>;
-  createNewConversation: (agentId?: string, title?: string) => Promise<Conversation | null>;
-  renameConversation: (conversationId: string, newTitle: string) => Promise<void>;
+  createNewConversation: (
+    agentId?: string,
+    title?: string,
+  ) => Promise<Conversation | null>;
+  renameConversation: (
+    conversationId: string,
+    newTitle: string,
+  ) => Promise<void>;
   deleteConversation: (conversationId: string) => Promise<void>;
-  // Branch management
-  currentBranchId: string | null;
-  availableBranches: string[];
-  /** Map of branchId -> ordered message IDs — used to detect divergence points */
-  branchMessageIds: Record<string, string[]>;
-  switchBranch: (branchId: string) => Promise<void>;
-  editMessage: (messageId: string, newContent: string) => Promise<{ branchId: string; messages: any[] } | null>;
-  regenerateMessage: (messageId: string) => Promise<{ branchId: string; messages: any[] } | null>;
-  loadBranches: () => Promise<void>;
   // Background streaming
   /** @deprecated Use ConversationStore.streamingIds instead */
   streamingConversationId: string | null;
@@ -55,12 +52,10 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
-  // Branch management state
-  const [currentBranchId, setCurrentBranchId] = useState<string | null>(null);
-  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
-  const [branchMessageIds, setBranchMessageIds] = useState<Record<string, string[]>>({});
   // Background streaming (kept for backward compat; UI now reads ConversationStore.streamingIds)
-  const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
+  const [streamingConversationId, setStreamingConversationId] = useState<
+    string | null
+  >(null);
 
   /**
    * Initialize or restore session
@@ -153,7 +148,10 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const createNewConversation = async (agentId?: string, title: string = "New Conversation"): Promise<Conversation | null> => {
+  const createNewConversation = async (
+    agentId?: string,
+    title: string = "New Conversation",
+  ): Promise<Conversation | null> => {
     if (!sessionId) return null;
     try {
       const payload: any = { title };
@@ -177,7 +175,10 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     return null;
   };
 
-  const renameConversation = async (conversationId: string, newTitle: string) => {
+  const renameConversation = async (
+    conversationId: string,
+    newTitle: string,
+  ) => {
     if (!sessionId) return;
     try {
       const response = await fetch(
@@ -186,12 +187,14 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: newTitle }),
-        }
+        },
       );
 
       if (response.ok) {
         setConversations((prev) =>
-          prev.map((c) => (c.id === conversationId ? { ...c, title: newTitle } : c))
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, title: newTitle } : c,
+          ),
         );
       }
     } catch (error) {
@@ -204,7 +207,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const response = await fetch(
         `/api/sessions/${sessionId}/conversations/${conversationId}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       );
 
       if (response.ok) {
@@ -212,7 +215,9 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
         if (currentConversationId === conversationId) {
           setConversations((prev) => {
             const remaining = prev.filter((c) => c.id !== conversationId);
-            setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
+            setCurrentConversationId(
+              remaining.length > 0 ? remaining[0].id : null,
+            );
             return remaining;
           });
         }
@@ -229,109 +234,6 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [sessionId]);
 
-  // Load branches when conversation changes
-  useEffect(() => {
-    if (currentConversationId && sessionId) {
-      loadBranches();
-    }
-  }, [currentConversationId, sessionId]);
-
-  /**
-   * Load available branches for current conversation
-   */
-  const loadBranches = async () => {
-    if (!sessionId || !currentConversationId) return;
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/conversations/${currentConversationId}/branches`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setAvailableBranches(data.branches || []);
-        setCurrentBranchId(data.currentBranchId || "default");
-        setBranchMessageIds(data.branchMessageIds || {});
-      }
-    } catch (error) {
-      console.error("Error loading branches:", error);
-    }
-  };
-
-  /**
-   * Switch to a different branch
-   */
-  const switchBranch = async (branchId: string) => {
-    if (!sessionId || !currentConversationId) return;
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/conversations/${currentConversationId}/branches/${branchId}/switch`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentBranchId(data.currentBranchId || branchId);
-        // Trigger reload of messages in Chat component
-      }
-    } catch (error) {
-      console.error("Error switching branch:", error);
-    }
-  };
-
-  /**
-   * Edit a message and create a new branch
-   */
-  const editMessage = async (messageId: string, newContent: string): Promise<{ branchId: string; messages: any[] } | null> => {
-    if (!sessionId || !currentConversationId) return null;
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages/${messageId}/edit`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: newContent }),
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentBranchId(data.currentBranchId || data.branchId);
-        // Reload branches
-        await loadBranches();
-        return { branchId: data.branchId, messages: data.messages || [] };
-      }
-    } catch (error) {
-      console.error("Error editing message:", error);
-    }
-    return null;
-  };
-
-  /**
-   * Regenerate an assistant response in a new branch
-   */
-  const regenerateMessage = async (messageId: string): Promise<{ branchId: string; messages: any[] } | null> => {
-    if (!sessionId || !currentConversationId) return null;
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/conversations/${currentConversationId}/messages/${messageId}/regenerate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentBranchId(data.currentBranchId || data.branchId);
-        // Reload branches
-        await loadBranches();
-        return { branchId: data.branchId, messages: data.messages || [] };
-      }
-    } catch (error) {
-      console.error("Error regenerating message:", error);
-    }
-    return null;
-  };
-
   const value: SessionContextType = {
     sessionId,
     currentConversationId,
@@ -344,14 +246,6 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({
     createNewConversation,
     renameConversation,
     deleteConversation,
-    // Branch management
-    currentBranchId,
-    availableBranches,
-    branchMessageIds,
-    switchBranch,
-    editMessage,
-    regenerateMessage,
-    loadBranches,
     // Background streaming
     streamingConversationId,
     setStreamingConversationId,

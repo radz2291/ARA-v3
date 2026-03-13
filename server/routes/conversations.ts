@@ -181,7 +181,6 @@ export const handleAddMessage: RequestHandler = (req, res) => {
       content: message.content,
       reasoning: message.reasoning,
       parentMessageId: message.parentMessageId,
-      branchId: message.branchId,
       isPartialContent: message.isPartialContent,
       timestamp: message.timestamp,
       executionSteps: message.executionSteps,
@@ -283,176 +282,8 @@ export const handleDeleteConversation: RequestHandler = (req, res) => {
 };
 
 /**
- * GET /api/sessions/:sessionId/conversations/:conversationId/branches
- * Get all branches for a conversation
- */
-export const handleGetBranches: RequestHandler = (req, res) => {
-  try {
-    const { sessionId, conversationId } = req.params;
-
-    // Verify session exists
-    const session = storage.sessions.get(sessionId);
-    if (!session) {
-      return res.status(404).json({ message: "Session not found" });
-    }
-
-    // Get conversation
-    const conversation = storage.conversations.get(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    // Verify conversation belongs to session
-    if (conversation.sessionId !== sessionId) {
-      return res.status(403).json({ message: "Conversation not in session" });
-    }
-
-    const branches = storage.conversations.getAllBranches(conversationId);
-
-    // Return message fingerprints for each branch so the client can detect divergence points.
-    // Fingerprint = id + role + first-100-chars-of-content so edits (same id, new content)
-    // are also detected, not just regenerations (new id).
-    const branchMessageIds: Record<string, string[]> = {};
-    // Also return full message info including parentMessageId for tree construction
-    const branchMessages: Record<
-      string,
-      Array<{
-        fingerprint: string;
-        parentMessageId: string | null;
-      }>
-    > = {};
-    for (const branchId of branches) {
-      try {
-        const msgs = storage.conversations.getBranchMessages(
-          conversationId,
-          branchId,
-        );
-        branchMessageIds[branchId] = msgs.map(
-          (m) => `${m.id}:${m.role}:${(m.content || "").slice(0, 100)}`,
-        );
-        branchMessages[branchId] = msgs.map((m) => ({
-          fingerprint: `${m.id}:${m.role}:${(m.content || "").slice(0, 100)}`,
-          parentMessageId: m.parentMessageId ?? null,
-        }));
-      } catch {
-        branchMessageIds[branchId] = [];
-        branchMessages[branchId] = [];
-      }
-    }
-
-    return res.json({
-      branches,
-      currentBranchId: conversation.currentBranchId || "default",
-      branchMessageIds,
-      branchMessages,
-    });
-  } catch (error) {
-    console.error("Error getting branches:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to get branches";
-    return res.status(500).json({ message });
-  }
-};
-
-/**
- * POST /api/sessions/:sessionId/conversations/:conversationId/branches/:branchId/switch
- * Switch to a different branch
- */
-export const handleSwitchBranch: RequestHandler = (req, res) => {
-  try {
-    const { sessionId, conversationId, branchId } = req.params;
-
-    // Verify session exists
-    const session = storage.sessions.get(sessionId);
-    if (!session) {
-      return res.status(404).json({ message: "Session not found" });
-    }
-
-    // Get conversation
-    const conversation = storage.conversations.get(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    // Verify conversation belongs to session
-    if (conversation.sessionId !== sessionId) {
-      return res.status(403).json({ message: "Conversation not in session" });
-    }
-
-    // Switch branch
-    const updated = storage.conversations.switchBranch(
-      conversationId,
-      branchId,
-    );
-
-    return res.json({
-      id: updated.id,
-      currentBranchId: updated.currentBranchId,
-      messages: updated.messages,
-      updatedAt: updated.updatedAt,
-    });
-  } catch (error) {
-    console.error("Error switching branch:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to switch branch";
-    return res.status(500).json({ message });
-  }
-};
-
-/**
- * DELETE /api/sessions/:sessionId/conversations/:conversationId/branches/:branchId
- * Delete a branch
- */
-export const handleDeleteBranch: RequestHandler = (req, res) => {
-  try {
-    const { sessionId, conversationId, branchId } = req.params;
-
-    // Verify session exists
-    const session = storage.sessions.get(sessionId);
-    if (!session) {
-      return res.status(404).json({ message: "Session not found" });
-    }
-
-    // Get conversation
-    const conversation = storage.conversations.get(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    // Verify conversation belongs to session
-    if (conversation.sessionId !== sessionId) {
-      return res.status(403).json({ message: "Conversation not in session" });
-    }
-
-    // Don't allow deleting the current branch
-    if (branchId === (conversation.currentBranchId || "default")) {
-      return res
-        .status(400)
-        .json({ message: "Cannot delete the current branch" });
-    }
-
-    // Delete branch
-    const deleted = storage.conversations.deleteBranch(
-      conversationId,
-      branchId,
-    );
-
-    if (!deleted) {
-      return res.status(404).json({ message: "Branch not found" });
-    }
-
-    return res.json({ deleted: true });
-  } catch (error) {
-    console.error("Error deleting branch:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to delete branch";
-    return res.status(500).json({ message });
-  }
-};
-
-/**
  * POST /api/sessions/:sessionId/conversations/:conversationId/messages/:messageId/edit
- * Edit a message and create a new branch
+ * Edit a message (in-place update, no branch creation)
  */
 export const handleEditMessage: RequestHandler = (req, res) => {
   try {
@@ -489,47 +320,15 @@ export const handleEditMessage: RequestHandler = (req, res) => {
       return res.status(404).json({ message: "Message not found" });
     }
 
-    const message = conversation.messages[messageIndex];
-
-    // Create a new branch with all current messages (including the one being edited)
-    const newBranchId = `branch_${messageId}_${Date.now()}`;
-    storage.conversations.createBranch(conversationId, newBranchId);
-
-    // Update messageGraph to track the divergence:
-    // The parent message now has a new child in the new branch
-    if (message.parentMessageId && conversation.messageGraph) {
-      const parentNode = conversation.messageGraph[message.parentMessageId];
-      if (parentNode) {
-        // Add the new branch root marker to parent's children
-        // This marks that there's a divergence from this point
-        const branchMarkerId = `branch_${newBranchId}_start`;
-        if (!parentNode.children.includes(branchMarkerId)) {
-          parentNode.children.push(branchMarkerId);
-        }
-        // Track the branch marker in the graph
-        conversation.messageGraph[branchMarkerId] = {
-          parentMessageId: message.parentMessageId,
-          children: [messageId], // The edited message becomes a child of the branch marker
-        };
-      }
-    }
-
-    // Switch to the new branch
-    storage.conversations.switchBranch(conversationId, newBranchId);
-
-    // Update the message with new content
-    storage.conversations.updateMessage(conversationId, messageId, { content });
-
-    // Remove all messages after this one in the new branch
-    const updatedConversation = storage.conversations.truncateMessages(
+    // Simple in-place update (no branch creation)
+    const updatedMessage = storage.conversations.updateMessage(
       conversationId,
-      messageIndex + 1,
+      messageId,
+      { content },
     );
 
     return res.json({
-      branchId: newBranchId,
-      messages: updatedConversation.messages,
-      currentBranchId: updatedConversation.currentBranchId,
+      message: updatedMessage,
     });
   } catch (error) {
     console.error("Error editing message:", error);
@@ -541,7 +340,7 @@ export const handleEditMessage: RequestHandler = (req, res) => {
 
 /**
  * POST /api/sessions/:sessionId/conversations/:conversationId/messages/:messageId/regenerate
- * Regenerate an assistant response in a new branch
+ * Regenerate an assistant response (simple replace, no branch creation)
  */
 export const handleRegenerateMessage: RequestHandler = (req, res) => {
   try {
@@ -581,41 +380,14 @@ export const handleRegenerateMessage: RequestHandler = (req, res) => {
         .json({ message: "Only assistant messages can be regenerated" });
     }
 
-    // Create a new branch with all current messages (including the one being regenerated)
-    const newBranchId = `branch_regen_${messageId}_${Date.now()}`;
-    storage.conversations.createBranch(conversationId, newBranchId);
-
-    // Update messageGraph to track the divergence:
-    // The parent message now has a new child path for regeneration
-    if (message.parentMessageId && conversation.messageGraph) {
-      const parentNode = conversation.messageGraph[message.parentMessageId];
-      if (parentNode) {
-        // Add the new branch root marker to parent's children
-        const branchMarkerId = `branch_${newBranchId}_start`;
-        if (!parentNode.children.includes(branchMarkerId)) {
-          parentNode.children.push(branchMarkerId);
-        }
-        // Track the branch marker in the graph
-        conversation.messageGraph[branchMarkerId] = {
-          parentMessageId: message.parentMessageId,
-          children: [], // Will be populated when new message is added
-        };
-      }
-    }
-
-    // Switch to the new branch
-    storage.conversations.switchBranch(conversationId, newBranchId);
-
-    // Remove the old assistant message and all following messages
+    // Remove the old assistant message and all following messages (simple truncate)
     const updatedConversation = storage.conversations.truncateMessages(
       conversationId,
       messageIndex,
     );
 
     return res.json({
-      branchId: newBranchId,
       messages: updatedConversation.messages,
-      currentBranchId: updatedConversation.currentBranchId,
       regenerationRequired: true, // Signal client to stream new response
     });
   } catch (error) {

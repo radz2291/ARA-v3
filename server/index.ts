@@ -2,7 +2,11 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
-import { handleLLMRequest, handleLLMStream, handleModelsDiscovery } from "./routes/llm";
+import {
+  handleLLMRequest,
+  handleLLMStream,
+  handleModelsDiscovery,
+} from "./routes/llm";
 import {
   handleCreateSession,
   handleGetSession,
@@ -17,9 +21,6 @@ import {
   handleAddMessage,
   handleUpdateConversation,
   handleDeleteConversation,
-  handleGetBranches,
-  handleSwitchBranch,
-  handleDeleteBranch,
   handleEditMessage,
   handleRegenerateMessage,
 } from "./routes/conversations";
@@ -86,43 +87,29 @@ export function createServer() {
   app.get("/api/sessions/:sessionId/conversations", handleListConversations);
   app.get(
     "/api/sessions/:sessionId/conversations/:conversationId",
-    handleGetConversation
+    handleGetConversation,
   );
   app.post(
     "/api/sessions/:sessionId/conversations/:conversationId/messages",
-    handleAddMessage
+    handleAddMessage,
   );
   app.patch(
     "/api/sessions/:sessionId/conversations/:conversationId",
-    handleUpdateConversation
+    handleUpdateConversation,
   );
   app.delete(
     "/api/sessions/:sessionId/conversations/:conversationId",
-    handleDeleteConversation
-  );
-
-  // Branch routes
-  app.get(
-    "/api/sessions/:sessionId/conversations/:conversationId/branches",
-    handleGetBranches
-  );
-  app.post(
-    "/api/sessions/:sessionId/conversations/:conversationId/branches/:branchId/switch",
-    handleSwitchBranch
-  );
-  app.delete(
-    "/api/sessions/:sessionId/conversations/:conversationId/branches/:branchId",
-    handleDeleteBranch
+    handleDeleteConversation,
   );
 
   // Message editing and regeneration routes
   app.post(
     "/api/sessions/:sessionId/conversations/:conversationId/messages/:messageId/edit",
-    handleEditMessage
+    handleEditMessage,
   );
   app.post(
     "/api/sessions/:sessionId/conversations/:conversationId/messages/:messageId/regenerate",
-    handleRegenerateMessage
+    handleRegenerateMessage,
   );
 
   // Agent routes
