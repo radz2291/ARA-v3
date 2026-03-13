@@ -28,7 +28,11 @@ export const handleCreateConversation: RequestHandler = (req, res) => {
     }
 
     // Create conversation with optional agentId
-    const conversation = storage.conversations.create(sessionId, title, agentId);
+    const conversation = storage.conversations.create(
+      sessionId,
+      title,
+      agentId,
+    );
 
     return res.json({
       id: conversation.id,
@@ -76,9 +80,7 @@ export const handleListConversations: RequestHandler = (req, res) => {
   } catch (error) {
     console.error("Error listing conversations:", error);
     const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to list conversations";
+      error instanceof Error ? error.message : "Failed to list conversations";
     return res.status(500).json({ message });
   }
 };
@@ -132,7 +134,8 @@ export const handleGetConversation: RequestHandler = (req, res) => {
 export const handleAddMessage: RequestHandler = (req, res) => {
   try {
     const { sessionId, conversationId } = req.params;
-    const { role, content, executionSteps, reasoning, parentMessageId } = req.body;
+    const { role, content, executionSteps, reasoning, parentMessageId } =
+      req.body;
 
     // Validate required fields
     if (!role || content === undefined || content === null) {
@@ -140,7 +143,9 @@ export const handleAddMessage: RequestHandler = (req, res) => {
     }
 
     if (role !== "user" && role !== "assistant") {
-      return res.status(400).json({ message: "Role must be 'user' or 'assistant'" });
+      return res
+        .status(400)
+        .json({ message: "Role must be 'user' or 'assistant'" });
     }
 
     // Verify session exists
@@ -161,7 +166,14 @@ export const handleAddMessage: RequestHandler = (req, res) => {
     }
 
     // Add message
-    const message = storage.conversations.addMessage(conversationId, role, content, executionSteps, reasoning, parentMessageId);
+    const message = storage.conversations.addMessage(
+      conversationId,
+      role,
+      content,
+      executionSteps,
+      reasoning,
+      parentMessageId,
+    );
 
     return res.json({
       id: message.id,
@@ -172,7 +184,7 @@ export const handleAddMessage: RequestHandler = (req, res) => {
       branchId: message.branchId,
       isPartialContent: message.isPartialContent,
       timestamp: message.timestamp,
-      executionSteps: message.executionSteps
+      executionSteps: message.executionSteps,
     });
   } catch (error) {
     console.error("Error adding message:", error);
@@ -301,14 +313,30 @@ export const handleGetBranches: RequestHandler = (req, res) => {
     // Fingerprint = id + role + first-100-chars-of-content so edits (same id, new content)
     // are also detected, not just regenerations (new id).
     const branchMessageIds: Record<string, string[]> = {};
+    // Also return full message info including parentMessageId for tree construction
+    const branchMessages: Record<
+      string,
+      Array<{
+        fingerprint: string;
+        parentMessageId: string | null;
+      }>
+    > = {};
     for (const branchId of branches) {
       try {
-        const msgs = storage.conversations.getBranchMessages(conversationId, branchId);
-        branchMessageIds[branchId] = msgs.map(
-          (m) => `${m.id}:${m.role}:${(m.content || "").slice(0, 100)}`
+        const msgs = storage.conversations.getBranchMessages(
+          conversationId,
+          branchId,
         );
+        branchMessageIds[branchId] = msgs.map(
+          (m) => `${m.id}:${m.role}:${(m.content || "").slice(0, 100)}`,
+        );
+        branchMessages[branchId] = msgs.map((m) => ({
+          fingerprint: `${m.id}:${m.role}:${(m.content || "").slice(0, 100)}`,
+          parentMessageId: m.parentMessageId ?? null,
+        }));
       } catch {
         branchMessageIds[branchId] = [];
+        branchMessages[branchId] = [];
       }
     }
 
@@ -316,6 +344,7 @@ export const handleGetBranches: RequestHandler = (req, res) => {
       branches,
       currentBranchId: conversation.currentBranchId || "default",
       branchMessageIds,
+      branchMessages,
     });
   } catch (error) {
     console.error("Error getting branches:", error);
@@ -351,7 +380,10 @@ export const handleSwitchBranch: RequestHandler = (req, res) => {
     }
 
     // Switch branch
-    const updated = storage.conversations.switchBranch(conversationId, branchId);
+    const updated = storage.conversations.switchBranch(
+      conversationId,
+      branchId,
+    );
 
     return res.json({
       id: updated.id,
@@ -400,7 +432,10 @@ export const handleDeleteBranch: RequestHandler = (req, res) => {
     }
 
     // Delete branch
-    const deleted = storage.conversations.deleteBranch(conversationId, branchId);
+    const deleted = storage.conversations.deleteBranch(
+      conversationId,
+      branchId,
+    );
 
     if (!deleted) {
       return res.status(404).json({ message: "Branch not found" });
@@ -447,7 +482,9 @@ export const handleEditMessage: RequestHandler = (req, res) => {
     }
 
     // Find the message
-    const messageIndex = conversation.messages.findIndex((m) => m.id === messageId);
+    const messageIndex = conversation.messages.findIndex(
+      (m) => m.id === messageId,
+    );
     if (messageIndex === -1) {
       return res.status(404).json({ message: "Message not found" });
     }
@@ -456,7 +493,11 @@ export const handleEditMessage: RequestHandler = (req, res) => {
 
     // Create a new branch from the message's parent
     const newBranchId = `branch_${messageId}_${Date.now()}`;
-    storage.conversations.createBranch(conversationId, newBranchId, message.parentMessageId);
+    storage.conversations.createBranch(
+      conversationId,
+      newBranchId,
+      message.parentMessageId,
+    );
 
     // Switch to the new branch
     storage.conversations.switchBranch(conversationId, newBranchId);
@@ -465,7 +506,10 @@ export const handleEditMessage: RequestHandler = (req, res) => {
     storage.conversations.updateMessage(conversationId, messageId, { content });
 
     // Remove all messages after this one in the new branch
-    const updatedConversation = storage.conversations.truncateMessages(conversationId, messageIndex + 1);
+    const updatedConversation = storage.conversations.truncateMessages(
+      conversationId,
+      messageIndex + 1,
+    );
 
     return res.json({
       branchId: newBranchId,
@@ -506,7 +550,9 @@ export const handleRegenerateMessage: RequestHandler = (req, res) => {
     }
 
     // Find the message
-    const messageIndex = conversation.messages.findIndex((m) => m.id === messageId);
+    const messageIndex = conversation.messages.findIndex(
+      (m) => m.id === messageId,
+    );
     if (messageIndex === -1) {
       return res.status(404).json({ message: "Message not found" });
     }
@@ -522,13 +568,20 @@ export const handleRegenerateMessage: RequestHandler = (req, res) => {
 
     // Create a new branch from this message's parent
     const newBranchId = `branch_regen_${messageId}_${Date.now()}`;
-    storage.conversations.createBranch(conversationId, newBranchId, message.parentMessageId);
+    storage.conversations.createBranch(
+      conversationId,
+      newBranchId,
+      message.parentMessageId,
+    );
 
     // Switch to the new branch
     storage.conversations.switchBranch(conversationId, newBranchId);
 
     // Remove the old assistant message and all following messages
-    const updatedConversation = storage.conversations.truncateMessages(conversationId, messageIndex);
+    const updatedConversation = storage.conversations.truncateMessages(
+      conversationId,
+      messageIndex,
+    );
 
     return res.json({
       branchId: newBranchId,
