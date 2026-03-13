@@ -134,8 +134,7 @@ export const handleGetConversation: RequestHandler = (req, res) => {
 export const handleAddMessage: RequestHandler = (req, res) => {
   try {
     const { sessionId, conversationId } = req.params;
-    const { role, content, executionSteps, reasoning, parentMessageId } =
-      req.body;
+    const { role, content, executionSteps, reasoning } = req.body;
 
     // Validate required fields
     if (!role || content === undefined || content === null) {
@@ -172,7 +171,6 @@ export const handleAddMessage: RequestHandler = (req, res) => {
       content,
       executionSteps,
       reasoning,
-      parentMessageId,
     );
 
     return res.json({
@@ -180,7 +178,6 @@ export const handleAddMessage: RequestHandler = (req, res) => {
       role: message.role,
       content: message.content,
       reasoning: message.reasoning,
-      parentMessageId: message.parentMessageId,
       isPartialContent: message.isPartialContent,
       timestamp: message.timestamp,
       executionSteps: message.executionSteps,
