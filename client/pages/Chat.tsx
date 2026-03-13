@@ -379,17 +379,10 @@ export default function Chat() {
       setIsEditDialogOpen(false);
       setEditingMessageId(null);
 
-      if (result.message) {
-        // Get the updated message
-        const updatedMessage = result.message;
-
-        // Reload all messages to get the current state
-        const messagesResponse = await fetch(
-          `/api/sessions/${sessionId}/conversations/${convId}`,
-        );
-        const messagesData = await messagesResponse.json();
+      if (result.messages) {
+        // Use the truncated messages returned directly from the server
         const truncatedMessages: import("@/contexts/ConversationStore").Message[] =
-          messagesData.messages.map((m: any, idx: number) => ({
+          result.messages.map((m: any, idx: number) => ({
             ...m,
             id: m.id || `msg-${Date.now()}-${idx}`,
           }));

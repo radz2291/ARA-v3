@@ -327,8 +327,15 @@ export const handleEditMessage: RequestHandler = (req, res) => {
       { content },
     );
 
+    // Truncate all subsequent messages so they can be regenerated
+    const updatedConversation = storage.conversations.truncateMessages(
+      conversationId,
+      messageIndex + 1,
+    );
+
     return res.json({
       message: updatedMessage,
+      messages: updatedConversation.messages,
     });
   } catch (error) {
     console.error("Error editing message:", error);
