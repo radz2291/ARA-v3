@@ -78,8 +78,7 @@ describe("Conversation Routes", () => {
       });
       const res = createMockResponse();
 
-      const handler = handleCreateConversation[1];
-      await handler(req as Request, res as Response);
+      await handleCreateConversation(req as Request, res as Response);
 
       expect(storage.conversations.create).toHaveBeenCalledWith(
         "session-123",
@@ -107,8 +106,7 @@ describe("Conversation Routes", () => {
       });
       const res = createMockResponse();
 
-      const handler = handleCreateConversation[1];
-      await handler(req as Request, res as Response);
+      await handleCreateConversation(req as Request, res as Response);
 
       expect(res.status).toHaveBeenCalledWith(404);
     });
@@ -236,8 +234,7 @@ describe("Conversation Routes", () => {
       });
       const res = createMockResponse();
 
-      const handler = handleAddMessage[1];
-      await handler(req as Request, res as Response);
+      await handleAddMessage(req as Request, res as Response);
 
       expect(storage.conversations.addMessage).toHaveBeenCalled();
       expect(res.json).toHaveBeenCalled();
@@ -267,8 +264,7 @@ describe("Conversation Routes", () => {
       });
       const res = createMockResponse();
 
-      const handler = handleUpdateConversation[1];
-      await handler(req as Request, res as Response);
+      await handleUpdateConversation(req as Request, res as Response);
 
       expect(res.json).toHaveBeenCalledWith({
         id: "conv-123",

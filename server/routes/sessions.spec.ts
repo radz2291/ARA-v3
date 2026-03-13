@@ -60,8 +60,7 @@ describe("Session Routes", () => {
       const req = createMockRequest({ body: {} });
       const res = createMockResponse();
 
-      const handler = handleCreateSession[1];
-      await handler(req as Request, res as Response);
+      await handleCreateSession(req as Request, res as Response);
 
       expect(storage.sessions.create).toHaveBeenCalled();
       expect(res.json).toHaveBeenCalledWith({
@@ -86,8 +85,7 @@ describe("Session Routes", () => {
       });
       const res = createMockResponse();
 
-      const handler = handleCreateSession[1];
-      await handler(req as Request, res as Response);
+      await handleCreateSession(req as Request, res as Response);
 
       expect(storage.sessions.get).toHaveBeenCalledWith("existing-session");
       expect(res.json).toHaveBeenCalledWith({
@@ -107,8 +105,7 @@ describe("Session Routes", () => {
       const req = createMockRequest({ body: {} });
       const res = createMockResponse();
 
-      const handler = handleCreateSession[1];
-      await handler(req as Request, res as Response);
+      await handleCreateSession(req as Request, res as Response);
 
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalled();
@@ -181,8 +178,7 @@ describe("Session Routes", () => {
       });
       const res = createMockResponse();
 
-      const handler = handleSaveConfig[1];
-      await handler(req as Request, res as Response);
+      await handleSaveConfig(req as Request, res as Response);
 
       expect(storage.sessions.setConfig).toHaveBeenCalledWith("session-123", {
         apiKey: "key",
@@ -209,8 +205,7 @@ describe("Session Routes", () => {
       });
       const res = createMockResponse();
 
-      const handler = handleSaveConfig[1];
-      await handler(req as Request, res as Response);
+      await handleSaveConfig(req as Request, res as Response);
 
       expect(res.status).toHaveBeenCalledWith(500);
     });
