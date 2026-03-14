@@ -17,7 +17,6 @@ interface MessageItemProps {
   isPartialContent?: boolean;
   onEdit?: () => void;
   onRegenerate?: () => void;
-  onStop?: () => void;
 }
 
 export function MessageItem({
@@ -30,7 +29,6 @@ export function MessageItem({
   isPartialContent,
   onEdit,
   onRegenerate,
-  onStop,
 }: MessageItemProps) {
   const isStreaming = !!isPartialContent;
 
@@ -137,7 +135,6 @@ export function MessageItem({
             reasoning={reasoning}
             isStreaming={isStreaming}
             onRegenerate={onRegenerate}
-            onStop={onStop}
           />
         </div>
       </div>

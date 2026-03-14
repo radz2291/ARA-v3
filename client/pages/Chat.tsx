@@ -534,7 +534,6 @@ export default function Chat() {
             setIsEditDialogOpen(true);
           }}
           onRegenerate={handleRegenerate}
-          onStop={handleStopStreaming}
         />
 
         {/* ─── Edit Message Dialog ─── */}

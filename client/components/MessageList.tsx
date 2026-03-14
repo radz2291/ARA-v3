@@ -18,7 +18,6 @@ interface MessageListProps {
   isLoadingConversation?: boolean;
   onEdit?: (messageId: string) => void;
   onRegenerate?: (messageId: string) => void;
-  onStop?: () => void;
 }
 
 export function MessageList({
@@ -26,7 +25,6 @@ export function MessageList({
   isLoadingConversation,
   onEdit,
   onRegenerate,
-  onStop,
 }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -92,7 +90,6 @@ export function MessageList({
                   ? () => onRegenerate(message.id)
                   : undefined
               }
-              onStop={isLast && message.isPartialContent ? onStop : undefined}
             />
           );
         })}

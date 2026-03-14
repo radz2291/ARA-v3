@@ -1,4 +1,4 @@
-import { Copy, Edit2, RotateCcw, Square, Check } from "lucide-react";
+import { Copy, Edit2, RotateCcw, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -13,7 +13,6 @@ interface MessageActionsProps {
   light?: boolean;
   onEdit?: () => void;
   onRegenerate?: () => void;
-  onStop?: () => void;
 }
 
 export function MessageActions({
@@ -25,7 +24,6 @@ export function MessageActions({
   light,
   onEdit,
   onRegenerate,
-  onStop,
 }: MessageActionsProps) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -41,19 +39,8 @@ export function MessageActions({
   };
 
   if (isStreaming) {
-    // While streaming: only show stop button
-    return onStop ? (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onStop}
-        title="Stop generating"
-        className="h-7 px-2 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-      >
-        <Square className="w-3 h-3 fill-current" />
-        Stop
-      </Button>
-    ) : null;
+    // While streaming: hide actions
+    return null;
   }
 
   const iconCls = light
