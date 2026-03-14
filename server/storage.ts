@@ -288,6 +288,13 @@ class ConversationsStorage {
     return this.conversations.get(conversationId);
   }
 
+  list(): Conversation[] {
+    return Array.from(this.conversations.values()).sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  }
+
   listBySession(sessionId: string): Conversation[] {
     const convs = Array.from(this.conversations.values());
     return convs
@@ -981,13 +988,11 @@ export interface Artifact {
   subtype?: string;
   description?: string;
   agentId?: string;
-  sourceId?: string;
   content: string;
   versions: ArtifactVersion[];
   createdAt: string;
   updatedAt: string;
 }
-
 // ===== Artifacts Storage =====
 
 const ARTIFACTS_FILE = path.join(DATA_DIR, "artifacts.json");
@@ -1156,17 +1161,6 @@ class ArtifactsStorage {
     if (deleted) this.debouncedSave();
     return deleted;
   }
-
-  /** Idempotent upsert by sourceId — used for sync */
-  upsertBySourceId(
-    data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">,
-  ): Artifact {
-    const existing = Array.from(this.artifacts.values()).find(
-      (a) => a.sourceId === data.sourceId && a.type === data.type,
-    );
-    if (existing) return existing;
-    return this.create(data);
-  }
 }
 
 // ===== Storage Singleton Instances =====
@@ -1239,6 +1233,7 @@ export const storage = {
       getConversationsStorage().create(sessionId, title, agentId),
     get: (conversationId: string) =>
       getConversationsStorage().get(conversationId),
+    list: () => getConversationsStorage().list(),
     listBySession: (sessionId: string) =>
       getConversationsStorage().listBySession(sessionId),
     addMessage: (
@@ -1386,8 +1381,5 @@ export const storage = {
     restore: (artifactId: string, versionId: string) =>
       getArtifactsStorage().restore(artifactId, versionId),
     delete: (artifactId: string) => getArtifactsStorage().delete(artifactId),
-    upsertBySourceId: (
-      data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">,
-    ) => getArtifactsStorage().upsertBySourceId(data),
   },
 };

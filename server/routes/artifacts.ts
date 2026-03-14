@@ -1,11 +1,6 @@
 import { RequestHandler } from "express";
 import { storage } from "../storage";
-import {
-  SYSTEM_PROMPT_SUBTYPES,
-  SYSTEM_CONFIG_SUBTYPES,
-  getSubtypes,
-  type ArtifactType,
-} from "../../shared/artifacts";
+import { getSubtypes, type ArtifactType } from "../../shared/artifacts";
 
 // ============================================
 // Type/Subtype Validation Helpers
@@ -61,8 +56,7 @@ export const handleListArtifacts: RequestHandler = (req, res) => {
 
 // POST /api/artifacts
 export const handleCreateArtifact: RequestHandler = (req, res) => {
-  const { name, type, subtype, description, agentId, sourceId, content } =
-    req.body;
+  const { name, type, subtype, description, agentId, content } = req.body;
   if (!name || !type || content === undefined) {
     res.status(400).json({ error: "name, type, and content are required" });
     return;
@@ -90,7 +84,6 @@ export const handleCreateArtifact: RequestHandler = (req, res) => {
     subtype,
     description,
     agentId,
-    sourceId,
     content,
   });
   res.status(201).json(artifact);
@@ -129,82 +122,6 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
           // agent may have been deleted; ignore
         }
       }
-
-      // Two-way sync: if it's a model_config, update session config
-      if (
-        artifact.type === "system_config" &&
-        artifact.subtype === SYSTEM_CONFIG_SUBTYPES.MODEL_CONFIG &&
-        artifact.sourceId
-      ) {
-        try {
-          const parsed = JSON.parse(content);
-          storage.sessions.setConfig(artifact.sourceId, parsed);
-        } catch {
-          // invalid JSON or session gone; ignore
-        }
-      }
-
-      // Two-way sync: if it's an agent_config, update the agent
-      if (
-        artifact.type === "system_config" &&
-        artifact.subtype === SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG &&
-        artifact.sourceId
-      ) {
-        try {
-          const parsed = JSON.parse(content);
-          const agentId = artifact.sourceId.replace("agent_config:", "");
-          storage.agents.update(agentId, {
-            name: parsed.name,
-            description: parsed.description,
-            persona: parsed.persona,
-            status: parsed.status,
-            toolIds: parsed.toolIds,
-          });
-        } catch {
-          // invalid JSON or agent gone; ignore
-        }
-      }
-
-      // Two-way sync: if it's a conversation, update the source conversation
-      if (artifact.type === "conversation" && artifact.sourceId) {
-        try {
-          const parsed = JSON.parse(content);
-          const conversationId = artifact.sourceId;
-          const conversation = storage.conversations.get(conversationId);
-          if (!conversation) {
-            return; // conversation was deleted
-          }
-
-          // Update messages first (if provided)
-          if (parsed.messages !== undefined) {
-            conversation.messages = parsed.messages.map((msg: any) => ({
-              id: msg.id || crypto.randomUUID(),
-              role: msg.role,
-              content: msg.content,
-              timestamp: msg.timestamp || new Date().toISOString(),
-              executionSteps: msg.executionSteps,
-              reasoning: msg.reasoning,
-              parentMessageId: msg.parentMessageId,
-              rootMessageId: msg.rootMessageId,
-              isPartialContent: msg.isPartialContent ?? false,
-            }));
-            conversation.updatedAt = new Date().toISOString();
-          }
-
-          // Update title (which also triggers save) or just trigger save
-          if (parsed.title !== undefined) {
-            storage.conversations.updateTitle(conversationId, parsed.title);
-          } else if (parsed.messages !== undefined) {
-            // If only messages are being updated, trigger save by re-setting title
-            storage.conversations.updateTitle(
-              conversationId,
-              conversation.title,
-            );
-          }
-        } catch {
-          // invalid JSON or conversation gone; ignore
-        }
-      }
     }
 
     if (
@@ -235,49 +152,10 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
 
 // DELETE /api/artifacts/:id
 export const handleDeleteArtifact: RequestHandler = (req, res) => {
-  // Check if this is an agent_config artifact before deleting
-  const artifact = storage.artifacts.get(req.params.id);
-  const isAgentConfig =
-    artifact?.type === "system_config" &&
-    artifact?.subtype === SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG &&
-    artifact?.sourceId;
-
   const deleted = storage.artifacts.delete(req.params.id);
   if (!deleted) {
     res.status(404).json({ error: "Artifact not found" });
     return;
-  }
-
-  // Two-way sync: if it's an agent_config, delete the source agent
-  if (isAgentConfig) {
-    try {
-      const agentId = artifact.sourceId!.replace("agent_config:", "");
-      // Unassign tools first
-      if (artifact.agentId) {
-        const agent = storage.agents.get(agentId);
-        if (agent?.toolIds) {
-          for (const toolId of agent.toolIds) {
-            try {
-              storage.tools.removeFromAgent(toolId, agentId);
-            } catch {
-              // ignore
-            }
-          }
-        }
-      }
-      storage.agents.delete(agentId);
-    } catch {
-      // agent may have been already deleted; ignore
-    }
-  }
-
-  // Two-way sync: if it's a conversation, delete the source conversation
-  if (artifact?.type === "conversation" && artifact?.sourceId) {
-    try {
-      storage.conversations.delete(artifact.sourceId);
-    } catch {
-      // conversation may have been already deleted; ignore
-    }
   }
 
   res.json({ success: true });
