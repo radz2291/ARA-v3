@@ -36,11 +36,9 @@ export const handleListArtifacts: RequestHandler = (req, res) => {
 
   // Validate type if provided
   if (type && !isValidType(type)) {
-    res
-      .status(400)
-      .json({
-        error: `Invalid type: ${type}. Valid types: ${VALID_TYPES.join(", ")}`,
-      });
+    res.status(400).json({
+      error: `Invalid type: ${type}. Valid types: ${VALID_TYPES.join(", ")}`,
+    });
     return;
   }
 
@@ -72,11 +70,9 @@ export const handleCreateArtifact: RequestHandler = (req, res) => {
 
   // Validate type
   if (!isValidType(type)) {
-    res
-      .status(400)
-      .json({
-        error: `Invalid type: ${type}. Valid types: ${VALID_TYPES.join(", ")}`,
-      });
+    res.status(400).json({
+      error: `Invalid type: ${type}. Valid types: ${VALID_TYPES.join(", ")}`,
+    });
     return;
   }
 
@@ -218,11 +214,9 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
     ) {
       // Validate subtype if provided
       if (subtype && !isValidSubtype(artifact.type, subtype)) {
-        res
-          .status(400)
-          .json({
-            error: `Invalid subtype '${subtype}' for type '${artifact.type}'`,
-          });
+        res.status(400).json({
+          error: `Invalid subtype '${subtype}' for type '${artifact.type}'`,
+        });
         return;
       }
 
@@ -312,102 +306,4 @@ export const handleRestoreArtifact: RequestHandler = (req, res) => {
   } catch (err: any) {
     res.status(404).json({ error: err.message });
   }
-};
-
-// POST /api/artifacts/sync — idempotent seed from existing data
-export const handleSyncArtifacts: RequestHandler = async (req, res) => {
-  const synced: string[] = [];
-
-  // Sync agents → system_prompt artifacts
-  const agents = storage.agents.list();
-  for (const agent of agents) {
-    const artifact = storage.artifacts.upsertBySourceId({
-      name: `${agent.name} — System Instructions`,
-      type: "system_prompt",
-      subtype: SYSTEM_PROMPT_SUBTYPES.AGENT_INSTRUCTIONS,
-      description: `System instructions for agent: ${agent.name}`,
-      agentId: agent.id,
-      sourceId: agent.id,
-      content: agent.systemInstructions || "",
-    });
-    synced.push(artifact.id);
-  }
-
-  // Sync agents → agent_config artifacts
-  for (const agent of agents) {
-    const configContent = JSON.stringify(
-      {
-        name: agent.name,
-        description: agent.description,
-        persona: agent.persona,
-        status: agent.status,
-        toolIds: agent.toolIds,
-      },
-      null,
-      2,
-    );
-    const artifact = storage.artifacts.upsertBySourceId({
-      name: `${agent.name} — Agent Config`,
-      type: "system_config",
-      subtype: SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG,
-      description: `Configuration for agent: ${agent.name}`,
-      agentId: agent.id,
-      sourceId: `agent_config:${agent.id}`,
-      content: configContent,
-    });
-    synced.push(artifact.id);
-  }
-
-  // Sync sessions → model_config artifacts
-  const sessions = storage.sessions.list();
-  for (const session of sessions) {
-    if (!session.config) continue;
-    const configContent = JSON.stringify(
-      {
-        apiKey: "", // Masked/empty for security
-        apiUrl: session.config.apiUrl || "",
-        model: session.config.model,
-      },
-      null,
-      2,
-    );
-    const artifact = storage.artifacts.upsertBySourceId({
-      name: "Model Config",
-      type: "system_config",
-      subtype: SYSTEM_CONFIG_SUBTYPES.MODEL_CONFIG,
-      description: `LLM configuration for session`,
-      sourceId: session.id,
-      content: configContent,
-    });
-    synced.push(artifact.id);
-  }
-
-  // Sync conversations → conversation artifacts
-  for (const session of sessions) {
-    const conversations = storage.conversations.listBySession(session.id);
-    for (const conversation of conversations) {
-      const content = JSON.stringify({
-        title: conversation.title,
-        messages: conversation.messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-          timestamp: msg.timestamp,
-        })),
-        agentId: conversation.agentId,
-        createdAt: conversation.createdAt,
-        updatedAt: conversation.updatedAt,
-      });
-      const artifact = storage.artifacts.upsertBySourceId({
-        name: conversation.title,
-        type: "conversation",
-        description: `Conversation: ${conversation.title}`,
-        agentId: conversation.agentId,
-        sourceId: conversation.id,
-        content,
-      });
-      synced.push(artifact.id);
-    }
-  }
-
-  res.json({ synced: synced.length, ids: synced });
 };

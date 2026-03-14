@@ -61,7 +61,6 @@ import {
   handleUpdateArtifact,
   handleDeleteArtifact,
   handleRestoreArtifact,
-  handleSyncArtifacts,
 } from "./routes/artifacts";
 
 export function createServer() {
@@ -153,7 +152,6 @@ export function createServer() {
   // Artifact (Kernel) routes
   app.get("/api/artifacts", handleListArtifacts);
   app.post("/api/artifacts", handleCreateArtifact);
-  app.post("/api/artifacts/sync", handleSyncArtifacts);
   app.get("/api/artifacts/:id", handleGetArtifact);
   app.patch("/api/artifacts/:id", handleUpdateArtifact);
   app.delete("/api/artifacts/:id", handleDeleteArtifact);
