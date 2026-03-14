@@ -1,7 +1,8 @@
-import { FileText, MessageSquare, Settings, Trash2 } from "lucide-react";
+import { FileText, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Artifact } from "@shared/types";
+import { getArtifactMeta } from "@shared/artifacts";
 
 interface ArtifactCardProps {
   artifact: Artifact;
@@ -9,29 +10,6 @@ interface ArtifactCardProps {
   onClick: () => void;
   onDelete: () => void;
 }
-
-const TYPE_META: Record<
-  Artifact["type"],
-  { icon: React.ElementType; label: string; color: string }
-> = {
-  system_prompt: {
-    icon: FileText,
-    label: "System Prompt",
-    color:
-      "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
-  },
-  conversation: {
-    icon: MessageSquare,
-    label: "Conversation",
-    color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  },
-  system_config: {
-    icon: Settings,
-    label: "Config",
-    color:
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  },
-};
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -57,8 +35,8 @@ export function ArtifactCard({
   onClick,
   onDelete,
 }: ArtifactCardProps) {
-  const meta = TYPE_META[artifact.type];
-  const Icon = meta.icon;
+  const meta = getArtifactMeta(artifact.type);
+  const Icon = meta?.icon ?? FileText;
 
   const excerpt = artifact.content
     ? artifact.content.slice(0, 120).replace(/\n/g, " ").trim() +
@@ -84,7 +62,7 @@ export function ArtifactCard({
 
       {/* Icon + type badge */}
       <div className="flex items-start gap-3 mb-3">
-        <div className={cn("p-2 rounded-lg shrink-0", meta.color)}>
+        <div className={cn("p-2 rounded-lg shrink-0", meta?.color)}>
           <Icon className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
@@ -94,9 +72,9 @@ export function ArtifactCard({
           <div className="flex flex-wrap gap-1 mt-1">
             <Badge
               variant="secondary"
-              className={cn("text-xs px-1.5 py-0", meta.color)}
+              className={cn("text-xs px-1.5 py-0", meta?.color)}
             >
-              {meta.label}
+              {meta?.label}
             </Badge>
             {artifact.subtype && (
               <Badge variant="outline" className="text-xs px-1.5 py-0">
