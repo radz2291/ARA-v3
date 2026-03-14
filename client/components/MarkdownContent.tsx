@@ -127,31 +127,31 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           ),
           table: ({ children, node, ...props }) => (
             <TableWrapper>
-              <table className="w-full border-collapse" {...props}>
+              <table className="w-full border-separate border-spacing-0" {...props}>
                 {children}
               </table>
             </TableWrapper>
           ),
           thead: ({ children, node, ...props }) => (
-            <thead className="bg-muted/50 border-b border-border" {...props}>
+            <thead className="bg-muted/50 sticky top-0 z-30" {...props}>
               {children}
             </thead>
           ),
           tr: ({ children, node, ...props }) => (
-            <tr className="border-b border-border last:border-0 hover:bg-muted/20" {...props}>
+            <tr className="group even:bg-muted/20 hover:bg-muted/40 transition-colors" {...props}>
               {children}
             </tr>
           ),
           th: ({ children, node, ...props }) => (
             <th
-              className="px-4 py-2 text-left font-semibold text-xs text-muted-foreground uppercase tracking-wider"
+              className="px-4 py-2 text-left font-semibold text-xs text-muted-foreground uppercase tracking-wider whitespace-nowrap first:sticky first:left-0 first:z-20 first:bg-muted first:shadow-[2px_0_0_0_rgba(0,0,0,0.1)] dark:first:shadow-[2px_0_0_0_rgba(255,255,255,0.1)] border-b border-r border-border last:border-r-0"
               {...props}
             >
               {children}
             </th>
           ),
           td: ({ children, node, ...props }) => (
-            <td className="px-4 py-2 align-top text-xs" {...props}>
+            <td className="px-4 py-2 align-top text-xs whitespace-nowrap first:sticky first:left-0 first:z-10 first:bg-background group-even:first:bg-[#f9fafb] dark:group-even:first:bg-[#1e1e1e] first:shadow-[2px_0_0_0_rgba(0,0,0,0.1)] dark:first:shadow-[2px_0_0_0_rgba(255,255,255,0.1)] border-b border-r border-border last:border-r-0 group-last:border-b-0" {...props}>
               {children}
             </td>
           ),
