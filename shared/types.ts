@@ -180,3 +180,51 @@ export const ToolSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
+// ===== Kernel / Artifact Types =====
+
+export type ArtifactType = "system_prompt" | "conversation" | "system_config";
+
+export interface ArtifactVersion {
+  id: string;
+  version: number;
+  content: string; // JSON string or plain text
+  createdAt: string;
+  note?: string; // e.g. "restored from v2", "manual save"
+}
+
+export interface Artifact {
+  id: string;
+  name: string;
+  type: ArtifactType;
+  subtype?: string; // e.g. 'model_config' | 'workspace_config' | 'session_config' | 'agent_config'
+  description?: string;
+  agentId?: string; // for system_prompts linked to an agent
+  sourceId?: string; // for conversations/workspaces: the original entity id
+  content: string; // current content (plain text or JSON string)
+  versions: ArtifactVersion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ArtifactVersionSchema = z.object({
+  id: z.string(),
+  version: z.number(),
+  content: z.string(),
+  createdAt: z.string(),
+  note: z.string().optional(),
+});
+
+export const ArtifactSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum(["system_prompt", "conversation", "system_config"]),
+  subtype: z.string().optional(),
+  description: z.string().optional(),
+  agentId: z.string().optional(),
+  sourceId: z.string().optional(),
+  content: z.string(),
+  versions: z.array(ArtifactVersionSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});

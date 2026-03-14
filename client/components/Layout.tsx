@@ -9,6 +9,7 @@ import {
   Bot,
   Briefcase,
   Loader2,
+  Library,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -125,6 +126,19 @@ export const Layout = ({ children }: LayoutProps) => {
               >
                 <Briefcase className="w-4 h-4" />
                 <span className="text-sm">Workspaces</span>
+              </Link>
+
+              <Link
+                to="/kernel"
+                className={cn(
+                  "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors",
+                  isActive("/kernel")
+                    ? "bg-sidebar-accent dark:bg-sidebar-accent text-sidebar-accent-foreground dark:text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground dark:text-sidebar-foreground hover:bg-sidebar-accent dark:hover:bg-sidebar-accent hover:bg-opacity-50",
+                )}
+              >
+                <Library className="w-4 h-4" />
+                <span className="text-sm">Kernel</span>
               </Link>
             </div>
 

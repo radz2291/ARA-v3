@@ -54,6 +54,15 @@ import {
   deleteTool,
 } from "./routes/tools";
 import { initializeEssentialTools } from "./tool-executor";
+import {
+  handleListArtifacts,
+  handleCreateArtifact,
+  handleGetArtifact,
+  handleUpdateArtifact,
+  handleDeleteArtifact,
+  handleRestoreArtifact,
+  handleSyncArtifacts,
+} from "./routes/artifacts";
 
 export function createServer() {
   const app = express();
@@ -140,6 +149,15 @@ export function createServer() {
   app.get("/api/agents/:agentId/tools", listToolsByAgent);
   app.post("/api/tools/assign", assignToolToAgent);
   app.post("/api/tools/unassign", removeToolFromAgent);
+
+  // Artifact (Kernel) routes
+  app.get("/api/artifacts", handleListArtifacts);
+  app.post("/api/artifacts", handleCreateArtifact);
+  app.post("/api/artifacts/sync", handleSyncArtifacts);
+  app.get("/api/artifacts/:id", handleGetArtifact);
+  app.patch("/api/artifacts/:id", handleUpdateArtifact);
+  app.delete("/api/artifacts/:id", handleDeleteArtifact);
+  app.post("/api/artifacts/:id/restore/:versionId", handleRestoreArtifact);
 
   // Initialize essential tools on server start
   initializeEssentialTools();

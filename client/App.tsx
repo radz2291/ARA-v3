@@ -9,6 +9,7 @@ import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
 import Workspaces from "./pages/Workspaces";
 import Settings from "./pages/Settings";
+import Kernel from "./pages/Kernel";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
               <Route path="/agents" element={<Agents />} />
               <Route path="/workspaces" element={<Workspaces />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/kernel" element={<Kernel />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

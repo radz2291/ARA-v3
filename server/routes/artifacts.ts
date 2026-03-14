@@ -1,0 +1,167 @@
+import { RequestHandler } from "express";
+import { storage } from "../storage";
+
+// GET /api/artifacts
+export const handleListArtifacts: RequestHandler = (req, res) => {
+  const { type, subtype, agentId, search } = req.query as Record<string, string>;
+  const artifacts = storage.artifacts.list({
+    type: type as any,
+    subtype,
+    agentId,
+    search,
+  });
+  res.json(artifacts);
+};
+
+// POST /api/artifacts
+export const handleCreateArtifact: RequestHandler = (req, res) => {
+  const { name, type, subtype, description, agentId, sourceId, content } = req.body;
+  if (!name || !type || content === undefined) {
+    res.status(400).json({ error: "name, type, and content are required" });
+    return;
+  }
+  const artifact = storage.artifacts.create({
+    name,
+    type,
+    subtype,
+    description,
+    agentId,
+    sourceId,
+    content,
+  });
+  res.status(201).json(artifact);
+};
+
+// GET /api/artifacts/:id
+export const handleGetArtifact: RequestHandler = (req, res) => {
+  const artifact = storage.artifacts.get(req.params.id);
+  if (!artifact) {
+    res.status(404).json({ error: "Artifact not found" });
+    return;
+  }
+  res.json(artifact);
+};
+
+// PATCH /api/artifacts/:id  — update content (auto-versions) or metadata
+export const handleUpdateArtifact: RequestHandler = (req, res) => {
+  const { content, note, name, description, subtype } = req.body;
+  try {
+    let artifact = storage.artifacts.get(req.params.id);
+    if (!artifact) {
+      res.status(404).json({ error: "Artifact not found" });
+      return;
+    }
+
+    if (content !== undefined) {
+      artifact = storage.artifacts.update(req.params.id, content, note);
+
+      // Two-way sync: if it's a system_prompt linked to an agent, update agent instructions
+      if (artifact.type === "system_prompt" && artifact.agentId) {
+        try {
+          storage.agents.update(artifact.agentId, {
+            systemInstructions: content,
+          });
+        } catch {
+          // agent may have been deleted; ignore
+        }
+      }
+
+      // Two-way sync: if it's a model_config, update session config
+      if (artifact.type === "system_config" && artifact.subtype === "model_config" && artifact.sourceId) {
+        try {
+          const parsed = JSON.parse(content);
+          storage.sessions.setConfig(artifact.sourceId, parsed);
+        } catch {
+          // invalid JSON or session gone; ignore
+        }
+      }
+    }
+
+    if (name !== undefined || description !== undefined || subtype !== undefined) {
+      artifact = storage.artifacts.updateMeta(req.params.id, { name, description, subtype });
+    }
+
+    res.json(artifact);
+  } catch (err: any) {
+    res.status(404).json({ error: err.message });
+  }
+};
+
+// DELETE /api/artifacts/:id
+export const handleDeleteArtifact: RequestHandler = (req, res) => {
+  const deleted = storage.artifacts.delete(req.params.id);
+  if (!deleted) {
+    res.status(404).json({ error: "Artifact not found" });
+    return;
+  }
+  res.json({ success: true });
+};
+
+// POST /api/artifacts/:id/restore/:versionId
+export const handleRestoreArtifact: RequestHandler = (req, res) => {
+  try {
+    const artifact = storage.artifacts.restore(req.params.id, req.params.versionId);
+
+    // Two-way sync after restore
+    if (artifact.type === "system_prompt" && artifact.agentId) {
+      try {
+        storage.agents.update(artifact.agentId, {
+          systemInstructions: artifact.content,
+        });
+      } catch {
+        // ignore
+      }
+    }
+
+    res.json(artifact);
+  } catch (err: any) {
+    res.status(404).json({ error: err.message });
+  }
+};
+
+// POST /api/artifacts/sync — idempotent seed from existing data
+export const handleSyncArtifacts: RequestHandler = async (req, res) => {
+  const synced: string[] = [];
+
+  // Sync agents → system_prompt artifacts
+  const agents = storage.agents.list();
+  for (const agent of agents) {
+    const artifact = storage.artifacts.upsertBySourceId({
+      name: `${agent.name} — System Instructions`,
+      type: "system_prompt",
+      subtype: "agent_instructions",
+      description: `System instructions for agent: ${agent.name}`,
+      agentId: agent.id,
+      sourceId: agent.id,
+      content: agent.systemInstructions || "",
+    });
+    synced.push(artifact.id);
+  }
+
+  // Sync agents → agent_config artifacts
+  for (const agent of agents) {
+    const configContent = JSON.stringify(
+      {
+        name: agent.name,
+        description: agent.description,
+        persona: agent.persona,
+        status: agent.status,
+        toolIds: agent.toolIds,
+      },
+      null,
+      2,
+    );
+    const artifact = storage.artifacts.upsertBySourceId({
+      name: `${agent.name} — Agent Config`,
+      type: "system_config",
+      subtype: "agent_config",
+      description: `Configuration for agent: ${agent.name}`,
+      agentId: agent.id,
+      sourceId: `agent_config:${agent.id}`,
+      content: configContent,
+    });
+    synced.push(artifact.id);
+  }
+
+  res.json({ synced: synced.length, ids: synced });
+};

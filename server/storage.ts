@@ -957,6 +957,204 @@ class ToolsStorage {
   }
 }
 
+// ===== Artifact Types =====
+
+export interface ArtifactVersion {
+  id: string;
+  version: number;
+  content: string;
+  createdAt: string;
+  note?: string;
+}
+
+export interface Artifact {
+  id: string;
+  name: string;
+  type: "system_prompt" | "conversation" | "system_config";
+  subtype?: string;
+  description?: string;
+  agentId?: string;
+  sourceId?: string;
+  content: string;
+  versions: ArtifactVersion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ===== Artifacts Storage =====
+
+const ARTIFACTS_FILE = path.join(DATA_DIR, "artifacts.json");
+
+class ArtifactsStorage {
+  private artifacts: Map<string, Artifact> = new Map();
+  private saveTimer: NodeJS.Timeout | null = null;
+  private needsSave = false;
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    ensureDataDir();
+    try {
+      if (fs.existsSync(ARTIFACTS_FILE)) {
+        const data = fs.readFileSync(ARTIFACTS_FILE, "utf-8");
+        const artifacts: Artifact[] = JSON.parse(data);
+        artifacts.forEach((a) => this.artifacts.set(a.id, a));
+      }
+    } catch (error) {
+      console.error("Error loading artifacts:", error);
+    }
+  }
+
+  private async save() {
+    try {
+      ensureDataDir();
+      const artifacts = Array.from(this.artifacts.values());
+      await fsPromises.writeFile(
+        ARTIFACTS_FILE,
+        JSON.stringify(artifacts, null, 2),
+      );
+    } catch (error) {
+      console.error("Error saving artifacts:", error);
+    }
+  }
+
+  private debouncedSave() {
+    this.needsSave = true;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      if (this.needsSave) {
+        this.save();
+        this.needsSave = false;
+      }
+    }, 50);
+  }
+
+  create(data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">): Artifact {
+    const now = new Date().toISOString();
+    const artifact: Artifact = {
+      ...data,
+      id: randomUUID(),
+      versions: [
+        {
+          id: randomUUID(),
+          version: 1,
+          content: data.content,
+          createdAt: now,
+          note: "Initial version",
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.artifacts.set(artifact.id, artifact);
+    this.debouncedSave();
+    return artifact;
+  }
+
+  get(artifactId: string): Artifact | undefined {
+    return this.artifacts.get(artifactId);
+  }
+
+  list(filters?: {
+    type?: Artifact["type"];
+    subtype?: string;
+    agentId?: string;
+    search?: string;
+  }): Artifact[] {
+    let results = Array.from(this.artifacts.values());
+    if (filters?.type) results = results.filter((a) => a.type === filters.type);
+    if (filters?.subtype) results = results.filter((a) => a.subtype === filters.subtype);
+    if (filters?.agentId) results = results.filter((a) => a.agentId === filters.agentId);
+    if (filters?.search) {
+      const q = filters.search.toLowerCase();
+      results = results.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          (a.description ?? "").toLowerCase().includes(q) ||
+          a.content.toLowerCase().includes(q),
+      );
+    }
+    return results.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  }
+
+  update(artifactId: string, newContent: string, note?: string): Artifact {
+    const artifact = this.artifacts.get(artifactId);
+    if (!artifact) throw new Error(`Artifact ${artifactId} not found`);
+
+    const nextVersion = artifact.versions.length + 1;
+    const now = new Date().toISOString();
+
+    // Save current content as a version before replacing
+    artifact.versions.push({
+      id: randomUUID(),
+      version: nextVersion,
+      content: newContent,
+      createdAt: now,
+      note: note ?? `Version ${nextVersion}`,
+    });
+    artifact.content = newContent;
+    artifact.updatedAt = now;
+
+    this.artifacts.set(artifactId, artifact);
+    this.debouncedSave();
+    return artifact;
+  }
+
+  updateMeta(
+    artifactId: string,
+    updates: Partial<Pick<Artifact, "name" | "description" | "subtype">>,
+  ): Artifact {
+    const artifact = this.artifacts.get(artifactId);
+    if (!artifact) throw new Error(`Artifact ${artifactId} not found`);
+    Object.assign(artifact, updates, { updatedAt: new Date().toISOString() });
+    this.debouncedSave();
+    return artifact;
+  }
+
+  restore(artifactId: string, versionId: string): Artifact {
+    const artifact = this.artifacts.get(artifactId);
+    if (!artifact) throw new Error(`Artifact ${artifactId} not found`);
+
+    const targetVersion = artifact.versions.find((v) => v.id === versionId);
+    if (!targetVersion) throw new Error(`Version ${versionId} not found`);
+
+    const now = new Date().toISOString();
+    const nextVersion = artifact.versions.length + 1;
+    artifact.versions.push({
+      id: randomUUID(),
+      version: nextVersion,
+      content: targetVersion.content,
+      createdAt: now,
+      note: `Restored from v${targetVersion.version}`,
+    });
+    artifact.content = targetVersion.content;
+    artifact.updatedAt = now;
+
+    this.artifacts.set(artifactId, artifact);
+    this.debouncedSave();
+    return artifact;
+  }
+
+  delete(artifactId: string): boolean {
+    const deleted = this.artifacts.delete(artifactId);
+    if (deleted) this.debouncedSave();
+    return deleted;
+  }
+
+  /** Idempotent upsert by sourceId — used for sync */
+  upsertBySourceId(data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">): Artifact {
+    const existing = Array.from(this.artifacts.values()).find(
+      (a) => a.sourceId === data.sourceId && a.type === data.type,
+    );
+    if (existing) return existing;
+    return this.create(data);
+  }
+}
+
 // ===== Storage Singleton Instances =====
 
 let sessionsStorage: SessionsStorage;
@@ -964,6 +1162,7 @@ let conversationsStorage: ConversationsStorage;
 let agentsStorage: AgentsStorage;
 let workspacesStorage: WorkspacesStorage;
 let toolsStorage: ToolsStorage;
+let artifactsStorage: ArtifactsStorage;
 
 function getSessionsStorage(): SessionsStorage {
   if (!sessionsStorage) {
@@ -998,6 +1197,13 @@ function getToolsStorage(): ToolsStorage {
     toolsStorage = new ToolsStorage();
   }
   return toolsStorage;
+}
+
+function getArtifactsStorage(): ArtifactsStorage {
+  if (!artifactsStorage) {
+    artifactsStorage = new ArtifactsStorage();
+  }
+  return artifactsStorage;
 }
 
 // ===== Public API =====
@@ -1144,5 +1350,21 @@ export const storage = {
     removeFromAgent: (toolId: string, agentId: string) =>
       getToolsStorage().removeFromAgent(toolId, agentId),
     delete: (toolId: string) => getToolsStorage().delete(toolId),
+  },
+  artifacts: {
+    create: (data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">) =>
+      getArtifactsStorage().create(data),
+    get: (artifactId: string) => getArtifactsStorage().get(artifactId),
+    list: (filters?: { type?: Artifact["type"]; subtype?: string; agentId?: string; search?: string }) =>
+      getArtifactsStorage().list(filters),
+    update: (artifactId: string, content: string, note?: string) =>
+      getArtifactsStorage().update(artifactId, content, note),
+    updateMeta: (artifactId: string, updates: Partial<Pick<Artifact, "name" | "description" | "subtype">>) =>
+      getArtifactsStorage().updateMeta(artifactId, updates),
+    restore: (artifactId: string, versionId: string) =>
+      getArtifactsStorage().restore(artifactId, versionId),
+    delete: (artifactId: string) => getArtifactsStorage().delete(artifactId),
+    upsertBySourceId: (data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">) =>
+      getArtifactsStorage().upsertBySourceId(data),
   },
 };
