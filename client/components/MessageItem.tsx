@@ -42,29 +42,28 @@ export function MessageItem({
     return (
       <div className="group flex justify-end gap-3">
         <div className="flex flex-col items-end max-w-[80%]">
-          <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3">
+          <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
             <p className="text-sm whitespace-pre-wrap leading-relaxed">
               {content}
             </p>
+          </div>
 
-            <div
-              className={cn(
-                "flex items-center gap-2 mt-2 pt-2 border-t border-primary-foreground/20",
-                "opacity-0 group-hover:opacity-70 transition-opacity",
-              )}
-            >
-              <span className="text-xs text-primary-foreground/60 flex-1">
-                {timeStr}
-              </span>
-              <MessageActions
-                messageId={messageId}
-                role="user"
-                content={content}
-                isStreaming={false}
-                onEdit={onEdit}
-                light
-              />
-            </div>
+          <div
+            className={cn(
+              "flex items-center gap-2 mt-1 px-1 transition-opacity",
+              "opacity-0 group-hover:opacity-100",
+            )}
+          >
+            <MessageActions
+              messageId={messageId}
+              role="user"
+              content={content}
+              isStreaming={false}
+              onEdit={onEdit}
+            />
+            <span className="text-xs text-muted-foreground">
+              {timeStr}
+            </span>
           </div>
         </div>
         <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0 mt-1">
