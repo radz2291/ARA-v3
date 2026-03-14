@@ -3,7 +3,10 @@ import { storage } from "../storage";
 
 // GET /api/artifacts
 export const handleListArtifacts: RequestHandler = (req, res) => {
-  const { type, subtype, agentId, search } = req.query as Record<string, string>;
+  const { type, subtype, agentId, search } = req.query as Record<
+    string,
+    string
+  >;
   const artifacts = storage.artifacts.list({
     type: type as any,
     subtype,
@@ -15,7 +18,8 @@ export const handleListArtifacts: RequestHandler = (req, res) => {
 
 // POST /api/artifacts
 export const handleCreateArtifact: RequestHandler = (req, res) => {
-  const { name, type, subtype, description, agentId, sourceId, content } = req.body;
+  const { name, type, subtype, description, agentId, sourceId, content } =
+    req.body;
   if (!name || !type || content === undefined) {
     res.status(400).json({ error: "name, type, and content are required" });
     return;
@@ -67,7 +71,11 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
       }
 
       // Two-way sync: if it's a model_config, update session config
-      if (artifact.type === "system_config" && artifact.subtype === "model_config" && artifact.sourceId) {
+      if (
+        artifact.type === "system_config" &&
+        artifact.subtype === "model_config" &&
+        artifact.sourceId
+      ) {
         try {
           const parsed = JSON.parse(content);
           storage.sessions.setConfig(artifact.sourceId, parsed);
@@ -77,8 +85,16 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
       }
     }
 
-    if (name !== undefined || description !== undefined || subtype !== undefined) {
-      artifact = storage.artifacts.updateMeta(req.params.id, { name, description, subtype });
+    if (
+      name !== undefined ||
+      description !== undefined ||
+      subtype !== undefined
+    ) {
+      artifact = storage.artifacts.updateMeta(req.params.id, {
+        name,
+        description,
+        subtype,
+      });
     }
 
     res.json(artifact);
@@ -100,7 +116,10 @@ export const handleDeleteArtifact: RequestHandler = (req, res) => {
 // POST /api/artifacts/:id/restore/:versionId
 export const handleRestoreArtifact: RequestHandler = (req, res) => {
   try {
-    const artifact = storage.artifacts.restore(req.params.id, req.params.versionId);
+    const artifact = storage.artifacts.restore(
+      req.params.id,
+      req.params.versionId,
+    );
 
     // Two-way sync after restore
     if (artifact.type === "system_prompt" && artifact.agentId) {
@@ -161,6 +180,57 @@ export const handleSyncArtifacts: RequestHandler = async (req, res) => {
       content: configContent,
     });
     synced.push(artifact.id);
+  }
+
+  // Sync sessions → model_config artifacts
+  const sessions = storage.sessions.list();
+  for (const session of sessions) {
+    if (!session.config) continue;
+    const configContent = JSON.stringify(
+      {
+        apiKey: "", // Masked/empty for security
+        apiUrl: session.config.apiUrl || "",
+        model: session.config.model,
+      },
+      null,
+      2,
+    );
+    const artifact = storage.artifacts.upsertBySourceId({
+      name: "Model Config",
+      type: "system_config",
+      subtype: "model_config",
+      description: `LLM configuration for session`,
+      sourceId: session.id,
+      content: configContent,
+    });
+    synced.push(artifact.id);
+  }
+
+  // Sync conversations → conversation artifacts
+  for (const session of sessions) {
+    const conversations = storage.conversations.listBySession(session.id);
+    for (const conversation of conversations) {
+      const content = JSON.stringify({
+        title: conversation.title,
+        messages: conversation.messages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+        })),
+        agentId: conversation.agentId,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+      });
+      const artifact = storage.artifacts.upsertBySourceId({
+        name: conversation.title,
+        type: "conversation",
+        description: `Conversation: ${conversation.title}`,
+        agentId: conversation.agentId,
+        sourceId: conversation.id,
+        content,
+      });
+      synced.push(artifact.id);
+    }
   }
 
   res.json({ synced: synced.length, ids: synced });

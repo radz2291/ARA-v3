@@ -209,6 +209,13 @@ class SessionsStorage {
     }
     return deleted;
   }
+
+  list(): Session[] {
+    return Array.from(this.sessions.values()).sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }
 }
 
 // ===== Conversations Storage =====
@@ -1031,7 +1038,9 @@ class ArtifactsStorage {
     }, 50);
   }
 
-  create(data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">): Artifact {
+  create(
+    data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">,
+  ): Artifact {
     const now = new Date().toISOString();
     const artifact: Artifact = {
       ...data,
@@ -1065,8 +1074,10 @@ class ArtifactsStorage {
   }): Artifact[] {
     let results = Array.from(this.artifacts.values());
     if (filters?.type) results = results.filter((a) => a.type === filters.type);
-    if (filters?.subtype) results = results.filter((a) => a.subtype === filters.subtype);
-    if (filters?.agentId) results = results.filter((a) => a.agentId === filters.agentId);
+    if (filters?.subtype)
+      results = results.filter((a) => a.subtype === filters.subtype);
+    if (filters?.agentId)
+      results = results.filter((a) => a.agentId === filters.agentId);
     if (filters?.search) {
       const q = filters.search.toLowerCase();
       results = results.filter(
@@ -1077,7 +1088,8 @@ class ArtifactsStorage {
       );
     }
     return results.sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
   }
 
@@ -1146,7 +1158,9 @@ class ArtifactsStorage {
   }
 
   /** Idempotent upsert by sourceId — used for sync */
-  upsertBySourceId(data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">): Artifact {
+  upsertBySourceId(
+    data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">,
+  ): Artifact {
     const existing = Array.from(this.artifacts.values()).find(
       (a) => a.sourceId === data.sourceId && a.type === data.type,
     );
@@ -1218,6 +1232,7 @@ export const storage = {
       getSessionsStorage().setConfig(sessionId, config),
     getConfig: (sessionId: string) => getSessionsStorage().getConfig(sessionId),
     delete: (sessionId: string) => getSessionsStorage().delete(sessionId),
+    list: () => getSessionsStorage().list(),
   },
   conversations: {
     create: (sessionId: string, title: string, agentId?: string) =>
@@ -1352,19 +1367,27 @@ export const storage = {
     delete: (toolId: string) => getToolsStorage().delete(toolId),
   },
   artifacts: {
-    create: (data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">) =>
-      getArtifactsStorage().create(data),
+    create: (
+      data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">,
+    ) => getArtifactsStorage().create(data),
     get: (artifactId: string) => getArtifactsStorage().get(artifactId),
-    list: (filters?: { type?: Artifact["type"]; subtype?: string; agentId?: string; search?: string }) =>
-      getArtifactsStorage().list(filters),
+    list: (filters?: {
+      type?: Artifact["type"];
+      subtype?: string;
+      agentId?: string;
+      search?: string;
+    }) => getArtifactsStorage().list(filters),
     update: (artifactId: string, content: string, note?: string) =>
       getArtifactsStorage().update(artifactId, content, note),
-    updateMeta: (artifactId: string, updates: Partial<Pick<Artifact, "name" | "description" | "subtype">>) =>
-      getArtifactsStorage().updateMeta(artifactId, updates),
+    updateMeta: (
+      artifactId: string,
+      updates: Partial<Pick<Artifact, "name" | "description" | "subtype">>,
+    ) => getArtifactsStorage().updateMeta(artifactId, updates),
     restore: (artifactId: string, versionId: string) =>
       getArtifactsStorage().restore(artifactId, versionId),
     delete: (artifactId: string) => getArtifactsStorage().delete(artifactId),
-    upsertBySourceId: (data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">) =>
-      getArtifactsStorage().upsertBySourceId(data),
+    upsertBySourceId: (
+      data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">,
+    ) => getArtifactsStorage().upsertBySourceId(data),
   },
 };

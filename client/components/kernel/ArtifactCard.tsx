@@ -17,7 +17,8 @@ const TYPE_META: Record<
   system_prompt: {
     icon: FileText,
     label: "System Prompt",
-    color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+    color:
+      "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
   },
   conversation: {
     icon: MessageSquare,
@@ -27,7 +28,8 @@ const TYPE_META: Record<
   system_config: {
     icon: Settings,
     label: "Config",
-    color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    color:
+      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   },
 };
 
@@ -40,7 +42,21 @@ function formatDate(iso: string) {
   });
 }
 
-export function ArtifactCard({ artifact, agentName, onClick, onDelete }: ArtifactCardProps) {
+function getMessageCount(content: string): number | null {
+  try {
+    const parsed = JSON.parse(content);
+    return typeof parsed.messageCount === "number" ? parsed.messageCount : null;
+  } catch {
+    return null;
+  }
+}
+
+export function ArtifactCard({
+  artifact,
+  agentName,
+  onClick,
+  onDelete,
+}: ArtifactCardProps) {
   const meta = TYPE_META[artifact.type];
   const Icon = meta.icon;
 
@@ -94,7 +110,8 @@ export function ArtifactCard({ artifact, agentName, onClick, onDelete }: Artifac
       {/* Agent link */}
       {agentName && (
         <p className="text-xs text-muted-foreground mb-2">
-          Agent: <span className="font-medium text-foreground">{agentName}</span>
+          Agent:{" "}
+          <span className="font-medium text-foreground">{agentName}</span>
         </p>
       )}
 
@@ -109,7 +126,14 @@ export function ArtifactCard({ artifact, agentName, onClick, onDelete }: Artifac
           {formatDate(artifact.updatedAt)}
         </span>
         <span className="text-xs text-muted-foreground">
-          v{artifact.versions.length}
+          {artifact.type === "conversation"
+            ? (() => {
+                const count = getMessageCount(artifact.content);
+                return count !== null
+                  ? `${count} message${count === 1 ? "" : "s"}`
+                  : `v${artifact.versions.length}`;
+              })()
+            : `v${artifact.versions.length}`}
         </span>
       </div>
     </div>
