@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { ArtifactEditor } from "./ArtifactEditor";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
+import { ConversationEditor } from "./ConversationEditor";
 import type { Artifact } from "@shared/types";
 
 interface ArtifactPanelProps {
@@ -21,7 +22,8 @@ const TYPE_META: Record<
   system_prompt: {
     icon: FileText,
     label: "System Prompt",
-    color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+    color:
+      "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
   },
   conversation: {
     icon: MessageSquare,
@@ -31,14 +33,23 @@ const TYPE_META: Record<
   system_config: {
     icon: Settings,
     label: "Config",
-    color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    color:
+      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   },
 };
 
 const isEditable = (artifact: Artifact) =>
-  artifact.type === "system_prompt" || artifact.type === "system_config";
+  artifact.type === "system_prompt" ||
+  artifact.type === "system_config" ||
+  artifact.subtype === "agent_config" ||
+  artifact.type === "conversation";
 
-export function ArtifactPanel({ artifact, agentName, onClose, onUpdated }: ArtifactPanelProps) {
+export function ArtifactPanel({
+  artifact,
+  agentName,
+  onClose,
+  onUpdated,
+}: ArtifactPanelProps) {
   const meta = TYPE_META[artifact.type];
   const Icon = meta.icon;
   const editable = isEditable(artifact);
@@ -46,10 +57,7 @@ export function ArtifactPanel({ artifact, agentName, onClose, onUpdated }: Artif
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
 
       {/* Panel */}
       <div className="fixed right-0 top-0 bottom-0 w-full max-w-xl bg-background border-l border-border shadow-2xl z-50 flex flex-col">
@@ -109,7 +117,11 @@ export function ArtifactPanel({ artifact, agentName, onClose, onUpdated }: Artif
           {/* Content tab */}
           <TabsContent value="content" className="flex-1 min-h-0 p-5 pt-3">
             {editable ? (
-              <ArtifactEditor artifact={artifact} onSaved={onUpdated} />
+              artifact.type === "conversation" ? (
+                <ConversationEditor artifact={artifact} onSaved={onUpdated} />
+              ) : (
+                <ArtifactEditor artifact={artifact} onSaved={onUpdated} />
+              )
             ) : (
               <ScrollArea className="h-full">
                 <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">
@@ -122,7 +134,10 @@ export function ArtifactPanel({ artifact, agentName, onClose, onUpdated }: Artif
           {/* History tab */}
           <TabsContent value="history" className="flex-1 min-h-0 p-5 pt-3">
             <ScrollArea className="h-full">
-              <ArtifactVersionHistory artifact={artifact} onRestored={onUpdated} />
+              <ArtifactVersionHistory
+                artifact={artifact}
+                onRestored={onUpdated}
+              />
             </ScrollArea>
           </TabsContent>
         </Tabs>
