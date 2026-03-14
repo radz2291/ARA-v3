@@ -1,5 +1,31 @@
 import { RequestHandler } from "express";
 import { storage } from "../storage";
+import {
+  SYSTEM_PROMPT_SUBTYPES,
+  SYSTEM_CONFIG_SUBTYPES,
+  getSubtypes,
+  type ArtifactType,
+} from "../../shared/artifacts";
+
+// ============================================
+// Type/Subtype Validation Helpers
+// ============================================
+
+const VALID_TYPES: ArtifactType[] = [
+  "system_prompt",
+  "conversation",
+  "system_config",
+];
+
+function isValidType(type: string): type is ArtifactType {
+  return VALID_TYPES.includes(type as ArtifactType);
+}
+
+function isValidSubtype(type: ArtifactType, subtype: string): boolean {
+  const subtypes = getSubtypes(type);
+  if (subtypes.length === 0) return true;
+  return subtypes.some((s) => s.value === subtype);
+}
 
 // GET /api/artifacts
 export const handleListArtifacts: RequestHandler = (req, res) => {
@@ -7,8 +33,27 @@ export const handleListArtifacts: RequestHandler = (req, res) => {
     string,
     string
   >;
+
+  // Validate type if provided
+  if (type && !isValidType(type)) {
+    res
+      .status(400)
+      .json({
+        error: `Invalid type: ${type}. Valid types: ${VALID_TYPES.join(", ")}`,
+      });
+    return;
+  }
+
+  // Validate subtype if type and subtype are both provided
+  if (type && subtype && !isValidSubtype(type as ArtifactType, subtype)) {
+    res
+      .status(400)
+      .json({ error: `Invalid subtype '${subtype}' for type '${type}'` });
+    return;
+  }
+
   const artifacts = storage.artifacts.list({
-    type: type as any,
+    type: type as ArtifactType,
     subtype,
     agentId,
     search,
@@ -24,9 +69,28 @@ export const handleCreateArtifact: RequestHandler = (req, res) => {
     res.status(400).json({ error: "name, type, and content are required" });
     return;
   }
+
+  // Validate type
+  if (!isValidType(type)) {
+    res
+      .status(400)
+      .json({
+        error: `Invalid type: ${type}. Valid types: ${VALID_TYPES.join(", ")}`,
+      });
+    return;
+  }
+
+  // Validate subtype
+  if (subtype && !isValidSubtype(type, subtype)) {
+    res
+      .status(400)
+      .json({ error: `Invalid subtype '${subtype}' for type '${type}'` });
+    return;
+  }
+
   const artifact = storage.artifacts.create({
     name,
-    type,
+    type: type as ArtifactType,
     subtype,
     description,
     agentId,
@@ -73,7 +137,7 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
       // Two-way sync: if it's a model_config, update session config
       if (
         artifact.type === "system_config" &&
-        artifact.subtype === "model_config" &&
+        artifact.subtype === SYSTEM_CONFIG_SUBTYPES.MODEL_CONFIG &&
         artifact.sourceId
       ) {
         try {
@@ -87,7 +151,7 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
       // Two-way sync: if it's an agent_config, update the agent
       if (
         artifact.type === "system_config" &&
-        artifact.subtype === "agent_config" &&
+        artifact.subtype === SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG &&
         artifact.sourceId
       ) {
         try {
@@ -152,6 +216,16 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
       description !== undefined ||
       subtype !== undefined
     ) {
+      // Validate subtype if provided
+      if (subtype && !isValidSubtype(artifact.type, subtype)) {
+        res
+          .status(400)
+          .json({
+            error: `Invalid subtype '${subtype}' for type '${artifact.type}'`,
+          });
+        return;
+      }
+
       artifact = storage.artifacts.updateMeta(req.params.id, {
         name,
         description,
@@ -171,7 +245,7 @@ export const handleDeleteArtifact: RequestHandler = (req, res) => {
   const artifact = storage.artifacts.get(req.params.id);
   const isAgentConfig =
     artifact?.type === "system_config" &&
-    artifact?.subtype === "agent_config" &&
+    artifact?.subtype === SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG &&
     artifact?.sourceId;
 
   const deleted = storage.artifacts.delete(req.params.id);
@@ -250,7 +324,7 @@ export const handleSyncArtifacts: RequestHandler = async (req, res) => {
     const artifact = storage.artifacts.upsertBySourceId({
       name: `${agent.name} — System Instructions`,
       type: "system_prompt",
-      subtype: "agent_instructions",
+      subtype: SYSTEM_PROMPT_SUBTYPES.AGENT_INSTRUCTIONS,
       description: `System instructions for agent: ${agent.name}`,
       agentId: agent.id,
       sourceId: agent.id,
@@ -275,7 +349,7 @@ export const handleSyncArtifacts: RequestHandler = async (req, res) => {
     const artifact = storage.artifacts.upsertBySourceId({
       name: `${agent.name} — Agent Config`,
       type: "system_config",
-      subtype: "agent_config",
+      subtype: SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG,
       description: `Configuration for agent: ${agent.name}`,
       agentId: agent.id,
       sourceId: `agent_config:${agent.id}`,
@@ -300,7 +374,7 @@ export const handleSyncArtifacts: RequestHandler = async (req, res) => {
     const artifact = storage.artifacts.upsertBySourceId({
       name: "Model Config",
       type: "system_config",
-      subtype: "model_config",
+      subtype: SYSTEM_CONFIG_SUBTYPES.MODEL_CONFIG,
       description: `LLM configuration for session`,
       sourceId: session.id,
       content: configContent,
