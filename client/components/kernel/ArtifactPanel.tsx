@@ -1,8 +1,9 @@
-import { X, FileText, MessageSquare, Settings } from "lucide-react";
+import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { ARTIFACT_TYPES, isArtifactEditable } from "@shared/artifacts";
 import { ArtifactEditor } from "./ArtifactEditor";
 import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { ConversationEditor } from "./ConversationEditor";
@@ -15,44 +16,15 @@ interface ArtifactPanelProps {
   onUpdated: (artifact: Artifact) => void;
 }
 
-const TYPE_META: Record<
-  Artifact["type"],
-  { icon: React.ElementType; label: string; color: string }
-> = {
-  system_prompt: {
-    icon: FileText,
-    label: "System Prompt",
-    color:
-      "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
-  },
-  conversation: {
-    icon: MessageSquare,
-    label: "Conversation",
-    color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  },
-  system_config: {
-    icon: Settings,
-    label: "Config",
-    color:
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  },
-};
-
-const isEditable = (artifact: Artifact) =>
-  artifact.type === "system_prompt" ||
-  artifact.type === "system_config" ||
-  artifact.subtype === "agent_config" ||
-  artifact.type === "conversation";
-
 export function ArtifactPanel({
   artifact,
   agentName,
   onClose,
   onUpdated,
 }: ArtifactPanelProps) {
-  const meta = TYPE_META[artifact.type];
+  const meta = ARTIFACT_TYPES[artifact.type];
   const Icon = meta.icon;
-  const editable = isEditable(artifact);
+  const editable = isArtifactEditable(artifact);
 
   return (
     <>

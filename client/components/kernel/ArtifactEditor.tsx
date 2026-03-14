@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { SYSTEM_CONFIG_SUBTYPES } from "@shared/artifacts";
 import type { Artifact } from "@shared/types";
 
 interface AgentConfigData {
@@ -22,7 +23,8 @@ interface ArtifactEditorProps {
 }
 
 export function ArtifactEditor({ artifact, onSaved }: ArtifactEditorProps) {
-  const isAgentConfig = artifact.subtype === "agent_config";
+  const isAgentConfig =
+    artifact.subtype === SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG;
   const [content, setContent] = useState(artifact.content);
   const [originalConfig, setOriginalConfig] = useState<AgentConfigData>({
     name: "",

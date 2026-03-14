@@ -9,7 +9,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { ArtifactType } from "@shared/types";
+import {
+  ARTIFACT_TYPES,
+  getSubtypes,
+  type ArtifactType,
+} from "@shared/artifacts";
 
 export interface KernelFiltersState {
   type: ArtifactType | "all";
@@ -29,35 +33,33 @@ interface KernelFiltersProps {
   agents: Agent[];
 }
 
+// Build type options from centralized ARTIFACT_TYPES
 const TYPE_OPTIONS: { label: string; value: ArtifactType | "all" }[] = [
   { label: "All", value: "all" },
-  { label: "System Prompts", value: "system_prompt" },
-  { label: "Configs", value: "system_config" },
-  { label: "Conversations", value: "conversation" },
+  ...Object.entries(ARTIFACT_TYPES).map(([value, meta]) => ({
+    label: meta.label + (value === "system_config" ? "s" : "s"),
+    value: value as ArtifactType,
+  })),
 ];
 
-const SUBTYPE_OPTIONS: Record<string, { label: string; value: string }[]> = {
-  system_prompt: [
-    { label: "All subtypes", value: "all" },
-    { label: "Agent Instructions", value: "agent_instructions" },
-    { label: "Custom Prompt", value: "custom_prompt" },
-  ],
-  system_config: [
-    { label: "All subtypes", value: "all" },
-    { label: "Agent Config", value: "agent_config" },
-    { label: "Model Config", value: "model_config" },
-    { label: "Workspace Config", value: "workspace_config" },
-    { label: "Session Config", value: "session_config" },
-  ],
-  conversation: [],
-  all: [],
+// Build subtype options from centralized getSubtypes
+const getSubtypeOptions = (type: ArtifactType | "all") => {
+  if (type === "all") return [];
+  const subtypes = getSubtypes(type);
+  return subtypes.length > 0
+    ? [{ label: "All subtypes", value: "all" }, ...subtypes]
+    : [];
 };
 
-export function KernelFilters({ filters, onChange, agents }: KernelFiltersProps) {
+export function KernelFilters({
+  filters,
+  onChange,
+  agents,
+}: KernelFiltersProps) {
   const update = (patch: Partial<KernelFiltersState>) =>
     onChange({ ...filters, ...patch });
 
-  const subtypeOptions = SUBTYPE_OPTIONS[filters.type] ?? [];
+  const subtypeOptions = getSubtypeOptions(filters.type);
   const hasActiveFilters =
     filters.type !== "all" ||
     (filters.subtype && filters.subtype !== "all") ||
@@ -90,7 +92,9 @@ export function KernelFilters({ filters, onChange, agents }: KernelFiltersProps)
         {subtypeOptions.length > 0 && (
           <Select
             value={filters.subtype || "all"}
-            onValueChange={(val) => update({ subtype: val === "all" ? "" : val })}
+            onValueChange={(val) =>
+              update({ subtype: val === "all" ? "" : val })
+            }
           >
             <SelectTrigger className="w-44 h-9 text-sm">
               <SelectValue placeholder="Subtype" />
@@ -109,7 +113,9 @@ export function KernelFilters({ filters, onChange, agents }: KernelFiltersProps)
         {agents.length > 0 && (
           <Select
             value={filters.agentId || "all"}
-            onValueChange={(val) => update({ agentId: val === "all" ? "" : val })}
+            onValueChange={(val) =>
+              update({ agentId: val === "all" ? "" : val })
+            }
           >
             <SelectTrigger className="w-44 h-9 text-sm">
               <SelectValue placeholder="All agents" />
@@ -149,7 +155,9 @@ export function KernelFilters({ filters, onChange, agents }: KernelFiltersProps)
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onChange({ type: "all", subtype: "", agentId: "", search: "" })}
+            onClick={() =>
+              onChange({ type: "all", subtype: "", agentId: "", search: "" })
+            }
             className="h-9 text-sm text-muted-foreground"
           >
             Clear filters
