@@ -247,7 +247,7 @@ export function ConfigPanel({
                   {msg.role}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
-                  {msg.createdAt ? formatDate(msg.createdAt) : ""}
+                  {msg.timestamp ? formatDate(msg.timestamp) : ""}
                 </span>
               </div>
               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -282,12 +282,16 @@ export function ConfigPanel({
               <Badge variant="outline" className="text-xs">
                 {getLabel(itemType)}
               </Badge>
-              {itemType === "agent" && (
+              {itemType === "agent" && (data as Agent).status && (
                 <Badge
-                  variant={data.status === "active" ? "default" : "secondary"}
+                  variant={
+                    (data as Agent).status === "active"
+                      ? "default"
+                      : "secondary"
+                  }
                   className="text-xs"
                 >
-                  {data.status}
+                  {(data as Agent).status}
                 </Badge>
               )}
             </div>
@@ -319,8 +323,10 @@ export function ConfigPanel({
 
         {/* Metadata */}
         <div className="px-5 py-2 border-b border-border text-xs text-muted-foreground">
-          Created: {formatDate(data.createdAt)} · Updated:{" "}
-          {formatDate(data.updatedAt || data.createdAt)}
+          Created: {formatDate(data.createdAt)}
+          {"updatedAt" in data && data.updatedAt && (
+            <> · Updated: {formatDate(data.updatedAt)}</>
+          )}
         </div>
 
         {/* Tabs */}
