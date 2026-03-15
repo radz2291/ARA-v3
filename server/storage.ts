@@ -1161,6 +1161,30 @@ class ArtifactsStorage {
     if (deleted) this.debouncedSave();
     return deleted;
   }
+
+  /**
+   * Clean up legacy artifact types that are no longer needed.
+   * Removes all artifacts of type: conversation, system_prompt, system_config
+   * These types have been moved to agents and sessions.
+   */
+  cleanupLegacyTypes(): number {
+    const typesToDelete: Artifact["type"][] = [
+      "conversation",
+      "system_prompt",
+      "system_config",
+    ];
+    let deletedCount = 0;
+    for (const [id, artifact] of this.artifacts.entries()) {
+      if (typesToDelete.includes(artifact.type)) {
+        this.artifacts.delete(id);
+        deletedCount++;
+      }
+    }
+    if (deletedCount > 0) {
+      this.debouncedSave();
+    }
+    return deletedCount;
+  }
 }
 
 // ===== Storage Singleton Instances =====
@@ -1381,5 +1405,6 @@ export const storage = {
     restore: (artifactId: string, versionId: string) =>
       getArtifactsStorage().restore(artifactId, versionId),
     delete: (artifactId: string) => getArtifactsStorage().delete(artifactId),
+    cleanupLegacyTypes: () => getArtifactsStorage().cleanupLegacyTypes(),
   },
 };
