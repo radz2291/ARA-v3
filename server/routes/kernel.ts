@@ -1,7 +1,7 @@
 /**
  * Kernel Data Routes
  * ==================
- * Aggregated data endpoint for Kernel synchronization
+ * Aggregated data endpoints for Kernel synchronization
  */
 
 import { RequestHandler } from "express";
@@ -28,6 +28,65 @@ interface KernelDataResponse {
     artifacts: number;
   };
 }
+
+// Lightweight metadata for kernel list endpoint
+export interface KernelListItem {
+  id: string;
+  name: string;
+  type: KernelDataItemType;
+  subtype?: string;
+  createdAt: string;
+  updatedAt: string;
+  itemCount: number; // For conversations: message count, for artifacts: version count, for agents: tool count
+}
+
+interface KernelListResponse {
+  items: KernelListItem[];
+  counts: {
+    conversations: number;
+    agents: number;
+    sessions: number;
+    artifacts: number;
+  };
+}
+
+/**
+ * GET /api/kernel/list
+ * Returns lightweight metadata only for all kernel items
+ * No content, messages, or full data - just for display in the grid
+ */
+export const handleGetKernelList: RequestHandler = (_req, res) => {
+  try {
+    // Fetch metadata only from storage (lightweight list)
+    const sessions = storage.sessions.listMetadata();
+    const agents = storage.agents.listMetadata();
+    const conversations = storage.conversations.listMetadata();
+    const artifacts = storage.artifacts.listMetadata();
+
+    // Combine all items
+    const items: KernelListItem[] = [
+      ...sessions,
+      ...agents,
+      ...conversations,
+      ...artifacts,
+    ];
+
+    const response: KernelListResponse = {
+      items,
+      counts: {
+        conversations: conversations.length,
+        agents: agents.length,
+        sessions: sessions.length,
+        artifacts: artifacts.length,
+      },
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error("Error getting kernel list:", error);
+    res.status(500).json({ error: "Failed to get kernel list" });
+  }
+};
 
 /**
  * GET /api/kernel/data

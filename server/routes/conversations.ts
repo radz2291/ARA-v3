@@ -8,6 +8,37 @@ import { RequestHandler } from "express";
 import { storage } from "../storage";
 
 /**
+ * GET /api/conversations/:id
+ * Get a conversation directly by ID (for Kernel lazy loading)
+ */
+export const handleGetConversationById: RequestHandler = (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get conversation directly by ID
+    const conversation = storage.conversations.get(id);
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    return res.json({
+      id: conversation.id,
+      sessionId: conversation.sessionId,
+      agentId: conversation.agentId,
+      title: conversation.title,
+      messages: conversation.messages,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    });
+  } catch (error) {
+    console.error("Error getting conversation by ID:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to get conversation";
+    return res.status(500).json({ message });
+  }
+};
+
+/**
  * POST /api/sessions/:sessionId/conversations
  * Create a new conversation
  */

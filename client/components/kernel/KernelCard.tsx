@@ -6,9 +6,24 @@ import { getArtifactMeta } from "@shared/artifacts";
 
 type KernelItemType = "artifact" | "agent" | "conversation" | "session";
 
+// Lightweight data for list view (from /api/kernel/list)
+interface KernelListData {
+  id: string;
+  name: string;
+  type: KernelItemType;
+  subtype?: string;
+  createdAt: string;
+  updatedAt: string;
+  itemCount?: number;
+  // Optional full data fields for artifacts
+  content?: string;
+  agentId?: string;
+  versions?: Array<{ id: string }>;
+}
+
 interface KernelCardProps {
   itemType: KernelItemType;
-  data: Artifact | Agent | Conversation | Session;
+  data: Artifact | Agent | Conversation | Session | KernelListData;
   agentName?: string;
   onClick: () => void;
   onDelete?: () => void;
@@ -39,18 +54,22 @@ function ArtifactCard({
   onClick,
   onDelete,
 }: {
-  artifact: Artifact;
+  artifact: Artifact | KernelListData;
   agentName?: string;
   onClick: () => void;
   onDelete: () => void;
 }) {
-  const meta = getArtifactMeta(artifact.type);
+  const artifactType = artifact.type as Artifact["type"];
+  const meta = getArtifactMeta(artifactType);
   const Icon = meta?.icon ?? FileText;
 
+  // Handle both full data and lightweight data
   const excerpt = artifact.content
     ? artifact.content.slice(0, 120).replace(/\n/g, " ").trim() +
       (artifact.content.length > 120 ? "…" : "")
     : "No content";
+
+  const versionCount = artifact.versions?.length ?? artifact.itemCount ?? 0;
 
   return (
     <div
@@ -113,14 +132,16 @@ function ArtifactCard({
           {formatDate(artifact.updatedAt)}
         </span>
         <span className="text-xs text-muted-foreground">
-          {artifact.type === "conversation"
+          {artifactType === "conversation"
             ? (() => {
-                const count = getMessageCount(artifact.content);
-                return count !== null
+                const count = artifact.content
+                  ? getMessageCount(artifact.content)
+                  : artifact.itemCount;
+                return count !== null && count !== undefined
                   ? `${count} message${count === 1 ? "" : "s"}`
-                  : `v${artifact.versions.length}`;
+                  : `v${versionCount}`;
               })()
-            : `v${artifact.versions.length}`}
+            : `v${versionCount}`}
         </span>
       </div>
     </div>
@@ -134,7 +155,7 @@ function SimpleCard({
   onClick,
 }: {
   itemType: KernelItemType;
-  data: Agent | Conversation | Session;
+  data: Agent | Conversation | Session | KernelListData;
   onClick: () => void;
 }) {
   const getIcon = () => {
@@ -160,6 +181,13 @@ function SimpleCard({
   };
 
   const getTitle = () => {
+    // Handle lightweight data
+    if ("name" in data && itemType !== "conversation") {
+      return data.name || `Unnamed ${itemType}`;
+    }
+    if (itemType === "conversation") {
+      return data.name || "Untitled Conversation";
+    }
     switch (itemType) {
       case "agent":
         return (data as Agent).name || "Unnamed Agent";
@@ -171,6 +199,10 @@ function SimpleCard({
   };
 
   const getSubtitle = () => {
+    // Handle lightweight data with itemCount
+    if ("itemCount" in data && data.itemCount !== undefined) {
+      return `${data.itemCount} message${data.itemCount !== 1 ? "s" : ""}`;
+    }
     switch (itemType) {
       case "agent":
         return "Custom AI agent";
@@ -220,7 +252,7 @@ export function KernelCard({
   if (itemType === "artifact") {
     return (
       <ArtifactCard
-        artifact={data as Artifact}
+        artifact={data as Artifact | KernelListData}
         agentName={agentName}
         onClick={onClick}
         onDelete={onDelete!}
@@ -231,7 +263,7 @@ export function KernelCard({
   return (
     <SimpleCard
       itemType={itemType}
-      data={data as Agent | Conversation | Session}
+      data={data as Agent | Conversation | Session | KernelListData}
       onClick={onClick}
     />
   );

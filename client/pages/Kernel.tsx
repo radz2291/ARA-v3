@@ -14,13 +14,19 @@ import type { Artifact, Agent, Conversation, Session } from "@shared/types";
 type KernelDataItemType = "conversation" | "agent" | "session" | "artifact";
 type KernelDisplayType = "artifact" | "agent" | "conversation" | "session";
 
-interface KernelDataItem<T = unknown> {
+// Lightweight list item from /api/kernel/list
+interface KernelListItem {
+  id: string;
+  name: string;
   type: KernelDataItemType;
-  data: T;
+  subtype?: string;
+  createdAt: string;
+  updatedAt: string;
+  itemCount?: number;
 }
 
-interface KernelDataResponse {
-  items: KernelDataItem[];
+interface KernelListResponse {
+  items: KernelListItem[];
   counts: {
     conversations: number;
     agents: number;
@@ -37,59 +43,45 @@ const DEFAULT_FILTERS: KernelFiltersState = {
 };
 
 export default function Kernel() {
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [listItems, setListItems] = useState<KernelListItem[]>([]);
+  const [counts, setCounts] = useState({
+    conversations: 0,
+    agents: 0,
+    sessions: 0,
+    artifacts: 0,
+  });
   const [filters, setFilters] = useState<KernelFiltersState>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<KernelDisplayType | null>(
     null,
   );
+
+  // Full data for selected item (lazy loaded)
+  const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(
+    null,
+  );
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedConversation, setSelectedConversation] =
+    useState<Conversation | null>(null);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const isFirstMount = useRef(true);
   const { toast } = useToast();
 
-  const agentMap = Object.fromEntries(agents.map((a) => [a.id, a.name]));
-
-  // Load all kernel data from aggregated endpoint
-  const loadKernelData = async () => {
+  // Load lightweight kernel list
+  const loadKernelList = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/kernel/data");
-      const data: KernelDataResponse = await res.json();
-
-      // Parse items by type
-      const newAgents: Agent[] = [];
-      const newArtifacts: Artifact[] = [];
-      const newConversations: Conversation[] = [];
-      const newSessions: Session[] = [];
-
-      for (const item of data.items) {
-        switch (item.type) {
-          case "agent":
-            newAgents.push(item.data as Agent);
-            break;
-          case "artifact":
-            newArtifacts.push(item.data as Artifact);
-            break;
-          case "conversation":
-            newConversations.push(item.data as Conversation);
-            break;
-          case "session":
-            newSessions.push(item.data as Session);
-            break;
-        }
-      }
-
-      setAgents(newAgents);
-      setArtifacts(newArtifacts);
-      setConversations(newConversations);
-      setSessions(newSessions);
+      const res = await fetch("/api/kernel/list");
+      const data: KernelListResponse = await res.json();
+      setListItems(data.items);
+      setCounts(data.counts);
     } catch {
       toast({
         title: "Error",
-        description: "Could not load kernel data.",
+        description: "Could not load kernel list.",
         variant: "destructive",
       });
     } finally {
@@ -98,7 +90,7 @@ export default function Kernel() {
   };
 
   useEffect(() => {
-    loadKernelData();
+    loadKernelList();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload when filters change (but not on first mount)
@@ -107,15 +99,75 @@ export default function Kernel() {
       isFirstMount.current = false;
       return;
     }
-    loadKernelData();
+    loadKernelList();
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch full detail when item is selected
+  const handleItemClick = async (item: KernelListItem) => {
+    setSelectedId(item.id);
+    setSelectedType(item.type);
+    setDetailLoading(true);
+
+    try {
+      let endpoint = "";
+      switch (item.type) {
+        case "artifact":
+          endpoint = `/api/artifacts/${item.id}`;
+          break;
+        case "agent":
+          endpoint = `/api/agents/${item.id}`;
+          break;
+        case "conversation":
+          endpoint = `/api/conversations/${item.id}`;
+          break;
+        case "session":
+          endpoint = `/api/sessions/${item.id}`;
+          break;
+      }
+
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error("Failed to fetch");
+
+      const data = await res.json();
+
+      switch (item.type) {
+        case "artifact":
+          setSelectedArtifact(data as Artifact);
+          break;
+        case "agent":
+          setSelectedAgent(data as Agent);
+          break;
+        case "conversation":
+          setSelectedConversation(data as Conversation);
+          break;
+        case "session":
+          setSelectedSession(data as Session);
+          break;
+      }
+    } catch {
+      toast({
+        title: "Error",
+        description: `Could not load ${item.type} details.`,
+        variant: "destructive",
+      });
+      setSelectedId(null);
+      setSelectedType(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this artifact? This cannot be undone.")) return;
     try {
       await fetch(`/api/artifacts/${id}`, { method: "DELETE" });
-      setArtifacts((prev) => prev.filter((a) => a.id !== id));
-      if (selectedId === id) setSelectedId(null);
+      setListItems((prev) => prev.filter((a) => a.id !== id));
+      setCounts((prev) => ({ ...prev, artifacts: prev.artifacts - 1 }));
+      if (selectedId === id) {
+        setSelectedId(null);
+        setSelectedType(null);
+        setSelectedArtifact(null);
+      }
       toast({ title: "Deleted", description: "Artifact removed." });
     } catch {
       toast({
@@ -127,72 +179,62 @@ export default function Kernel() {
   };
 
   const handleArtifactUpdated = (updated: Artifact) => {
-    setArtifacts((prev) =>
-      prev.map((a) => (a.id === updated.id ? updated : a)),
+    setSelectedArtifact(updated);
+    // Update list item name if changed
+    setListItems((prev) =>
+      prev.map((item) =>
+        item.id === updated.id ? { ...item, name: updated.name } : item,
+      ),
     );
   };
 
   const handleAgentUpdated = (updated: Agent) => {
-    setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    setSelectedAgent(updated);
+    // Update list item name if changed
+    setListItems((prev) =>
+      prev.map((item) =>
+        item.id === updated.id ? { ...item, name: updated.name } : item,
+      ),
+    );
   };
 
-  // Find selected item based on ID and type
-  const selectedArtifact =
-    selectedType === "artifact"
-      ? (artifacts.find((a) => a.id === selectedId) ?? null)
-      : null;
-  const selectedAgent =
-    selectedType === "agent"
-      ? (agents.find((a) => a.id === selectedId) ?? null)
-      : null;
-  const selectedConversation =
-    selectedType === "conversation"
-      ? (conversations.find((c) => c.id === selectedId) ?? null)
-      : null;
-  const selectedSession =
-    selectedType === "session"
-      ? (sessions.find((s) => s.id === selectedId) ?? null)
-      : null;
-
   // Build a combined list of all kernel items for display
-  type KernelDisplayItem =
-    | { itemType: "artifact"; data: Artifact }
-    | { itemType: "agent"; data: Agent }
-    | { itemType: "conversation"; data: Conversation }
-    | { itemType: "session"; data: Session };
+  type KernelDisplayItem = {
+    itemType: KernelDataItemType;
+    id: string;
+    name: string;
+    subtype?: string;
+    createdAt: string;
+    updatedAt: string;
+    itemCount?: number;
+  };
 
-  const allItems: KernelDisplayItem[] = [
-    ...artifacts.map((a) => ({ itemType: "artifact" as const, data: a })),
-    ...agents.map((a) => ({ itemType: "agent" as const, data: a })),
-    ...conversations.map((c) => ({
-      itemType: "conversation" as const,
-      data: c,
-    })),
-    ...sessions.map((s) => ({ itemType: "session" as const, data: s })),
-  ];
+  const allItems: KernelDisplayItem[] = listItems.map((item) => ({
+    itemType: item.type,
+    id: item.id,
+    name: item.name,
+    subtype: item.subtype,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    itemCount: item.itemCount,
+  }));
 
   // Filter items based on current filters
   const filteredItems = allItems.filter((item) => {
+    // Type filter
+    if (filters.type !== "all" && item.itemType !== filters.type) {
+      return false;
+    }
+    // Subtype filter
+    if (filters.subtype && item.subtype !== filters.subtype) {
+      return false;
+    }
+    // Agent filter
+    // Note: The list endpoint doesn't include agentId for artifacts
     // Search filter - apply to all types
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
-      let matches = false;
-      if (item.itemType === "artifact") {
-        const artifact = item.data;
-        matches =
-          artifact.name?.toLowerCase().includes(searchLower) ||
-          artifact.content?.toLowerCase().includes(searchLower) ||
-          artifact.description?.toLowerCase().includes(searchLower);
-      } else if (item.itemType === "agent") {
-        const agent = item.data;
-        matches = agent.name?.toLowerCase().includes(searchLower);
-      } else if (item.itemType === "conversation") {
-        const conv = item.data;
-        matches = conv.title?.toLowerCase().includes(searchLower);
-      } else if (item.itemType === "session") {
-        // Sessions don't have obvious searchable fields, skip
-        matches = false;
-      }
+      const matches = item.name?.toLowerCase().includes(searchLower);
       if (!matches) return false;
     }
     return true;
@@ -216,12 +258,12 @@ export default function Kernel() {
                 </p>
                 {!loading && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    {agents.length} agent{agents.length !== 1 ? "s" : ""} ·{" "}
-                    {conversations.length} conversation
-                    {conversations.length !== 1 ? "s" : ""} · {sessions.length}{" "}
-                    session{sessions.length !== 1 ? "s" : ""} ·{" "}
-                    {artifacts.length} artifact
-                    {artifacts.length !== 1 ? "s" : ""}
+                    {counts.agents} agent{counts.agents !== 1 ? "s" : ""} ·{" "}
+                    {counts.conversations} conversation
+                    {counts.conversations !== 1 ? "s" : ""} · {counts.sessions}{" "}
+                    session{counts.sessions !== 1 ? "s" : ""} ·{" "}
+                    {counts.artifacts} artifact
+                    {counts.artifacts !== 1 ? "s" : ""}
                   </p>
                 )}
               </div>
@@ -233,7 +275,7 @@ export default function Kernel() {
             <KernelFilters
               filters={filters}
               onChange={setFilters}
-              agents={agents}
+              agents={[]}
             />
           </div>
         </div>
@@ -250,21 +292,13 @@ export default function Kernel() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredItems.map((item) => (
                 <KernelCard
-                  key={item.data.id}
+                  key={item.id}
                   itemType={item.itemType}
-                  data={item.data}
-                  agentName={
-                    item.itemType === "artifact" && item.data.agentId
-                      ? agentMap[item.data.agentId]
-                      : undefined
-                  }
-                  onClick={() => {
-                    setSelectedId(item.data.id);
-                    setSelectedType(item.itemType);
-                  }}
+                  data={item}
+                  onClick={() => handleItemClick(item)}
                   onDelete={
                     item.itemType === "artifact"
-                      ? () => handleDelete(item.data.id)
+                      ? () => handleDelete(item.id)
                       : undefined
                   }
                 />
@@ -278,14 +312,10 @@ export default function Kernel() {
       {selectedArtifact && selectedType === "artifact" && (
         <ArtifactPanel
           artifact={selectedArtifact}
-          agentName={
-            selectedArtifact.agentId
-              ? agentMap[selectedArtifact.agentId]
-              : undefined
-          }
           onClose={() => {
             setSelectedId(null);
             setSelectedType(null);
+            setSelectedArtifact(null);
           }}
           onUpdated={handleArtifactUpdated}
         />
@@ -299,6 +329,7 @@ export default function Kernel() {
           onClose={() => {
             setSelectedId(null);
             setSelectedType(null);
+            setSelectedAgent(null);
           }}
           onUpdated={(updated) => handleAgentUpdated(updated as Agent)}
         />
@@ -311,6 +342,7 @@ export default function Kernel() {
           onClose={() => {
             setSelectedId(null);
             setSelectedType(null);
+            setSelectedConversation(null);
           }}
         />
       )}
@@ -322,6 +354,7 @@ export default function Kernel() {
           onClose={() => {
             setSelectedId(null);
             setSelectedType(null);
+            setSelectedSession(null);
           }}
         />
       )}

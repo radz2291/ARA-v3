@@ -18,6 +18,7 @@ import {
   handleCreateConversation,
   handleListConversations,
   handleGetConversation,
+  handleGetConversationById,
   handleAddMessage,
   handleUpdateConversation,
   handleDeleteConversation,
@@ -62,7 +63,7 @@ import {
   handleDeleteArtifact,
   handleRestoreArtifact,
 } from "./routes/artifacts";
-import { handleGetKernelData } from "./routes/kernel";
+import { handleGetKernelList, handleGetKernelData } from "./routes/kernel";
 
 export function createServer() {
   const app = express();
@@ -92,6 +93,7 @@ export function createServer() {
   app.delete("/api/sessions/:sessionId", handleDeleteSession);
 
   // Conversation routes
+  app.get("/api/conversations/:id", handleGetConversationById);
   app.post("/api/sessions/:sessionId/conversations", handleCreateConversation);
   app.get("/api/sessions/:sessionId/conversations", handleListConversations);
   app.get(
@@ -158,7 +160,8 @@ export function createServer() {
   app.delete("/api/artifacts/:id", handleDeleteArtifact);
   app.post("/api/artifacts/:id/restore/:versionId", handleRestoreArtifact);
 
-  // Kernel aggregated data routes
+  // Kernel aggregated routes
+  app.get("/api/kernel/list", handleGetKernelList);
   app.get("/api/kernel/data", handleGetKernelData);
 
   // Initialize essential tools on server start

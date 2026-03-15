@@ -210,6 +210,32 @@ class SessionsStorage {
     return deleted;
   }
 
+  // Lightweight list that returns metadata only
+  listMetadata(): Array<{
+    id: string;
+    name: string;
+    type: "session";
+    subtype?: string;
+    createdAt: string;
+    updatedAt: string;
+    itemCount: number;
+  }> {
+    return Array.from(this.sessions.values())
+      .map((s) => ({
+        id: s.id,
+        name: "session",
+        type: "session" as const,
+        subtype: undefined,
+        createdAt: s.createdAt,
+        updatedAt: s.createdAt,
+        itemCount: 0,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+  }
+
   list(): Session[] {
     return Array.from(this.sessions.values()).sort(
       (a, b) =>
@@ -286,6 +312,32 @@ class ConversationsStorage {
 
   get(conversationId: string): Conversation | undefined {
     return this.conversations.get(conversationId);
+  }
+
+  // Lightweight list that returns metadata only (no content)
+  listMetadata(): Array<{
+    id: string;
+    name: string;
+    type: "conversation";
+    subtype?: string;
+    createdAt: string;
+    updatedAt: string;
+    itemCount: number;
+  }> {
+    return Array.from(this.conversations.values())
+      .map((c) => ({
+        id: c.id,
+        name: c.title,
+        type: "conversation" as const,
+        subtype: c.agentId,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        itemCount: c.messages.length,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
   }
 
   list(): Conversation[] {
@@ -618,6 +670,32 @@ class AgentsStorage {
 
   get(agentId: string): Agent | undefined {
     return this.agents.get(agentId);
+  }
+
+  // Lightweight list that returns metadata only (no content)
+  listMetadata(): Array<{
+    id: string;
+    name: string;
+    type: "agent";
+    subtype?: string;
+    createdAt: string;
+    updatedAt: string;
+    itemCount: number;
+  }> {
+    return Array.from(this.agents.values())
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: "agent" as const,
+        subtype: a.persona,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        itemCount: a.toolIds.length,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
   }
 
   list(): Agent[] {
@@ -1071,6 +1149,32 @@ class ArtifactsStorage {
     return this.artifacts.get(artifactId);
   }
 
+  // Lightweight list that returns metadata only (no content)
+  listMetadata(): Array<{
+    id: string;
+    name: string;
+    type: "artifact";
+    subtype?: string;
+    createdAt: string;
+    updatedAt: string;
+    itemCount: number;
+  }> {
+    return Array.from(this.artifacts.values())
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: "artifact" as const,
+        subtype: a.subtype,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        itemCount: a.versions.length,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+  }
+
   list(filters?: {
     type?: Artifact["type"];
     subtype?: string;
@@ -1227,6 +1331,7 @@ export const storage = {
     getConfig: (sessionId: string) => getSessionsStorage().getConfig(sessionId),
     delete: (sessionId: string) => getSessionsStorage().delete(sessionId),
     list: () => getSessionsStorage().list(),
+    listMetadata: () => getSessionsStorage().listMetadata(),
   },
   conversations: {
     create: (sessionId: string, title: string, agentId?: string) =>
@@ -1234,6 +1339,7 @@ export const storage = {
     get: (conversationId: string) =>
       getConversationsStorage().get(conversationId),
     list: () => getConversationsStorage().list(),
+    listMetadata: () => getConversationsStorage().listMetadata(),
     listBySession: (sessionId: string) =>
       getConversationsStorage().listBySession(sessionId),
     addMessage: (
@@ -1296,6 +1402,7 @@ export const storage = {
       ),
     get: (agentId: string) => getAgentsStorage().get(agentId),
     list: () => getAgentsStorage().list(),
+    listMetadata: () => getAgentsStorage().listMetadata(),
     update: (
       agentId: string,
       updates: Partial<Omit<Agent, "id" | "createdAt">>,
@@ -1372,6 +1479,7 @@ export const storage = {
       agentId?: string;
       search?: string;
     }) => getArtifactsStorage().list(filters),
+    listMetadata: () => getArtifactsStorage().listMetadata(),
     update: (artifactId: string, content: string, note?: string) =>
       getArtifactsStorage().update(artifactId, content, note),
     updateMeta: (
