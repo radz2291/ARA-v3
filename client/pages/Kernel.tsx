@@ -7,10 +7,12 @@ import {
 } from "@/components/kernel/KernelFilters";
 import { KernelCard } from "@/components/kernel/KernelCard";
 import { ArtifactPanel } from "@/components/kernel/ArtifactPanel";
+import { ConfigPanel } from "@/components/kernel/ConfigPanel";
 import { useToast } from "@/hooks/use-toast";
 import type { Artifact, Agent, Conversation, Session } from "@shared/types";
 
 type KernelDataItemType = "conversation" | "agent" | "session" | "artifact";
+type KernelDisplayType = "artifact" | "agent" | "conversation" | "session";
 
 interface KernelDataItem<T = unknown> {
   type: KernelDataItemType;
@@ -41,6 +43,9 @@ export default function Kernel() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [filters, setFilters] = useState<KernelFiltersState>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<KernelDisplayType | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const isFirstMount = useRef(true);
   const { toast } = useToast();
@@ -121,13 +126,33 @@ export default function Kernel() {
     }
   };
 
-  const handleUpdated = (updated: Artifact) => {
+  const handleArtifactUpdated = (updated: Artifact) => {
     setArtifacts((prev) =>
       prev.map((a) => (a.id === updated.id ? updated : a)),
     );
   };
 
-  const selectedArtifact = artifacts.find((a) => a.id === selectedId) ?? null;
+  const handleAgentUpdated = (updated: Agent) => {
+    setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+  };
+
+  // Find selected item based on ID and type
+  const selectedArtifact =
+    selectedType === "artifact"
+      ? (artifacts.find((a) => a.id === selectedId) ?? null)
+      : null;
+  const selectedAgent =
+    selectedType === "agent"
+      ? (agents.find((a) => a.id === selectedId) ?? null)
+      : null;
+  const selectedConversation =
+    selectedType === "conversation"
+      ? (conversations.find((c) => c.id === selectedId) ?? null)
+      : null;
+  const selectedSession =
+    selectedType === "session"
+      ? (sessions.find((s) => s.id === selectedId) ?? null)
+      : null;
 
   // Build a combined list of all kernel items for display
   type KernelDisplayItem =
@@ -233,7 +258,10 @@ export default function Kernel() {
                       ? agentMap[item.data.agentId]
                       : undefined
                   }
-                  onClick={() => setSelectedId(item.data.id)}
+                  onClick={() => {
+                    setSelectedId(item.data.id);
+                    setSelectedType(item.itemType);
+                  }}
                   onDelete={
                     item.itemType === "artifact"
                       ? () => handleDelete(item.data.id)
@@ -247,7 +275,7 @@ export default function Kernel() {
       </div>
 
       {/* Slide-over panel */}
-      {selectedArtifact && (
+      {selectedArtifact && selectedType === "artifact" && (
         <ArtifactPanel
           artifact={selectedArtifact}
           agentName={
@@ -255,8 +283,46 @@ export default function Kernel() {
               ? agentMap[selectedArtifact.agentId]
               : undefined
           }
-          onClose={() => setSelectedId(null)}
-          onUpdated={handleUpdated}
+          onClose={() => {
+            setSelectedId(null);
+            setSelectedType(null);
+          }}
+          onUpdated={handleArtifactUpdated}
+        />
+      )}
+
+      {/* Config panel for agents, conversations, sessions */}
+      {selectedType === "agent" && selectedAgent && (
+        <ConfigPanel
+          itemType="agent"
+          data={selectedAgent}
+          onClose={() => {
+            setSelectedId(null);
+            setSelectedType(null);
+          }}
+          onUpdated={(updated) => handleAgentUpdated(updated as Agent)}
+        />
+      )}
+
+      {selectedType === "conversation" && selectedConversation && (
+        <ConfigPanel
+          itemType="conversation"
+          data={selectedConversation}
+          onClose={() => {
+            setSelectedId(null);
+            setSelectedType(null);
+          }}
+        />
+      )}
+
+      {selectedType === "session" && selectedSession && (
+        <ConfigPanel
+          itemType="session"
+          data={selectedSession}
+          onClose={() => {
+            setSelectedId(null);
+            setSelectedType(null);
+          }}
         />
       )}
     </Layout>
