@@ -984,7 +984,7 @@ export interface ArtifactVersion {
 export interface Artifact {
   id: string;
   name: string;
-  type: "ai_output" | "summary" | "generated_code";
+  type: string;
   subtype?: string;
   description?: string;
   agentId?: string;
