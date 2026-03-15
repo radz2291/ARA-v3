@@ -183,7 +183,7 @@ export const ToolSchema = z.object({
 
 // ===== Kernel / Artifact Types =====
 
-export type ArtifactType = "system_prompt" | "conversation" | "system_config";
+export type ArtifactType = "output" | "summary" | "code";
 
 export interface ArtifactVersion {
   id: string;
@@ -218,7 +218,7 @@ export const ArtifactVersionSchema = z.object({
 export const ArtifactSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(["system_prompt", "conversation", "system_config"]),
+  type: z.enum(["output", "summary", "code"]),
   subtype: z.string().optional(),
   description: z.string().optional(),
   agentId: z.string().optional(),

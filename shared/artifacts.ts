@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FileText, MessageSquare, Settings } from "lucide-react";
+import { FileCode, FileText, Zap } from "lucide-react";
 import type { Artifact, ArtifactType } from "./types";
 
 // Re-export ArtifactType for convenience
@@ -21,56 +21,31 @@ export interface ArtifactTypeMeta {
  * Used for displaying type information in UI components.
  */
 export const ARTIFACT_TYPES: Record<ArtifactType, ArtifactTypeMeta> = {
-  system_prompt: {
-    icon: FileText,
-    label: "System Prompt",
+  output: {
+    icon: Zap,
+    label: "Output",
     color:
       "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
-    description: "AI instructions and prompts",
+    description: "AI-generated output",
   },
-  conversation: {
-    icon: MessageSquare,
-    label: "Conversation",
+  summary: {
+    icon: FileText,
+    label: "Summary",
     color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-    description: "Chat history and messages",
+    description: "AI-generated summary",
   },
-  system_config: {
-    icon: Settings,
-    label: "Config",
+  code: {
+    icon: FileCode,
+    label: "Code",
     color:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-    description: "Configuration settings",
+    description: "AI-generated code",
   },
 };
 
 // ============================================
 // Subtype Definitions
 // ============================================
-
-/**
- * Subtype values available for system_prompt artifacts.
- */
-export const SYSTEM_PROMPT_SUBTYPES = {
-  AGENT_INSTRUCTIONS: "agent_instructions",
-  CUSTOM_PROMPT: "custom_prompt",
-} as const;
-
-/**
- * Subtype values available for system_config artifacts.
- */
-export const SYSTEM_CONFIG_SUBTYPES = {
-  AGENT_CONFIG: "agent_config",
-  MODEL_CONFIG: "model_config",
-  WORKSPACE_CONFIG: "workspace_config",
-  SESSION_CONFIG: "session_config",
-} as const;
-
-/**
- * All subtype values as a union type.
- */
-export type ArtifactSubtypeValue =
-  | (typeof SYSTEM_PROMPT_SUBTYPES)[keyof typeof SYSTEM_PROMPT_SUBTYPES]
-  | (typeof SYSTEM_CONFIG_SUBTYPES)[keyof typeof SYSTEM_CONFIG_SUBTYPES];
 
 export interface ArtifactSubtype {
   value: string;
@@ -82,23 +57,9 @@ export interface ArtifactSubtype {
  * Empty array means the type has no subtypes.
  */
 export const ARTIFACT_SUBTYPES: Record<ArtifactType, ArtifactSubtype[]> = {
-  system_prompt: [
-    {
-      value: SYSTEM_PROMPT_SUBTYPES.AGENT_INSTRUCTIONS,
-      label: "Agent Instructions",
-    },
-    { value: SYSTEM_PROMPT_SUBTYPES.CUSTOM_PROMPT, label: "Custom Prompt" },
-  ],
-  system_config: [
-    { value: SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG, label: "Agent Config" },
-    { value: SYSTEM_CONFIG_SUBTYPES.MODEL_CONFIG, label: "Model Config" },
-    {
-      value: SYSTEM_CONFIG_SUBTYPES.WORKSPACE_CONFIG,
-      label: "Workspace Config",
-    },
-    { value: SYSTEM_CONFIG_SUBTYPES.SESSION_CONFIG, label: "Session Config" },
-  ],
-  conversation: [],
+  output: [],
+  summary: [],
+  code: [],
 };
 
 // ============================================
@@ -131,11 +92,11 @@ export function getSubtypes(type: ArtifactType): ArtifactSubtype[] {
  * @returns True if the artifact is editable
  */
 export function isArtifactEditable(artifact: Artifact): boolean {
+  // AI-generated content artifacts are editable
   return (
-    artifact.type === "system_prompt" ||
-    artifact.type === "system_config" ||
-    artifact.subtype === SYSTEM_CONFIG_SUBTYPES.AGENT_CONFIG ||
-    artifact.type === "conversation"
+    artifact.type === "output" ||
+    artifact.type === "summary" ||
+    artifact.type === "code"
   );
 }
 

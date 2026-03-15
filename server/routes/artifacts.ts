@@ -6,11 +6,7 @@ import { getSubtypes, type ArtifactType } from "../../shared/artifacts";
 // Type/Subtype Validation Helpers
 // ============================================
 
-const VALID_TYPES: ArtifactType[] = [
-  "system_prompt",
-  "conversation",
-  "system_config",
-];
+const VALID_TYPES: ArtifactType[] = ["output", "summary", "code"];
 
 function isValidType(type: string): type is ArtifactType {
   return VALID_TYPES.includes(type as ArtifactType);
@@ -111,17 +107,6 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
 
     if (content !== undefined) {
       artifact = storage.artifacts.update(req.params.id, content, note);
-
-      // Two-way sync: if it's a system_prompt linked to an agent, update agent instructions
-      if (artifact.type === "system_prompt" && artifact.agentId) {
-        try {
-          storage.agents.update(artifact.agentId, {
-            systemInstructions: content,
-          });
-        } catch {
-          // agent may have been deleted; ignore
-        }
-      }
     }
 
     if (
@@ -168,17 +153,6 @@ export const handleRestoreArtifact: RequestHandler = (req, res) => {
       req.params.id,
       req.params.versionId,
     );
-
-    // Two-way sync after restore
-    if (artifact.type === "system_prompt" && artifact.agentId) {
-      try {
-        storage.agents.update(artifact.agentId, {
-          systemInstructions: artifact.content,
-        });
-      } catch {
-        // ignore
-      }
-    }
 
     res.json(artifact);
   } catch (err: any) {
