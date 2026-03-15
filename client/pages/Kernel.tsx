@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { Library, Loader2, MessageSquare, User, Terminal } from "lucide-react";
+import { Library, Loader2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
   KernelFilters,
   type KernelFiltersState,
 } from "@/components/kernel/KernelFilters";
-import { ArtifactCard } from "@/components/kernel/ArtifactCard";
+import { KernelCard } from "@/components/kernel/KernelCard";
 import { ArtifactPanel } from "@/components/kernel/ArtifactPanel";
 import { useToast } from "@/hooks/use-toast";
 import type { Artifact, Agent, Conversation, Session } from "@shared/types";
-import { Badge } from "@/components/ui/badge";
 
 type KernelDataItemType = "conversation" | "agent" | "session" | "artifact";
 
@@ -224,25 +223,24 @@ export default function Kernel() {
             <EmptyState hasFilters={!!filters.search} />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredItems.map((item) => {
-                if (item.itemType === "artifact") {
-                  return (
-                    <ArtifactCard
-                      key={item.data.id}
-                      artifact={item.data}
-                      agentName={
-                        item.data.agentId
-                          ? agentMap[item.data.agentId]
-                          : undefined
-                      }
-                      onClick={() => setSelectedId(item.data.id)}
-                      onDelete={() => handleDelete(item.data.id)}
-                    />
-                  );
-                }
-                // Render cards for agents, conversations, sessions
-                return <KernelItemCard key={item.data.id} item={item} />;
-              })}
+              {filteredItems.map((item) => (
+                <KernelCard
+                  key={item.data.id}
+                  itemType={item.itemType}
+                  data={item.data}
+                  agentName={
+                    item.itemType === "artifact" && item.data.agentId
+                      ? agentMap[item.data.agentId]
+                      : undefined
+                  }
+                  onClick={() => setSelectedId(item.data.id)}
+                  onDelete={
+                    item.itemType === "artifact"
+                      ? () => handleDelete(item.data.id)
+                      : undefined
+                  }
+                />
+              ))}
             </div>
           )}
         </div>
@@ -280,96 +278,6 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
             ? "Try clearing your filters to see all items."
             : "Start a conversation or create an agent to see items here."}
         </p>
-      </div>
-    </div>
-  );
-}
-
-// Card component for non-artifact kernel items (agents, conversations, sessions)
-function KernelItemCard({
-  item,
-}: {
-  item: {
-    itemType: "agent" | "conversation" | "session";
-    data: Agent | Conversation | Session;
-  };
-}) {
-  const { itemType, data } = item;
-
-  const getIcon = () => {
-    switch (itemType) {
-      case "agent":
-        return <User className="w-4 h-4" />;
-      case "conversation":
-        return <MessageSquare className="w-4 h-4" />;
-      case "session":
-        return <Terminal className="w-4 h-4" />;
-    }
-  };
-
-  const getLabel = () => {
-    switch (itemType) {
-      case "agent":
-        return "Agent";
-      case "conversation":
-        return "Conversation";
-      case "session":
-        return "Session";
-    }
-  };
-
-  const getTitle = () => {
-    switch (itemType) {
-      case "agent":
-        return (data as Agent).name || "Unnamed Agent";
-      case "conversation":
-        return (data as Conversation).title || "Untitled Conversation";
-      case "session":
-        return "Session";
-    }
-  };
-
-  const getSubtitle = () => {
-    switch (itemType) {
-      case "agent":
-        return "Custom AI agent";
-      case "conversation": {
-        const conv = data as Conversation;
-        const msgCount = conv.messages?.length || 0;
-        return `${msgCount} message${msgCount !== 1 ? "s" : ""}`;
-      }
-      case "session":
-        return "AI session configuration";
-    }
-  };
-
-  function formatDate(iso: string) {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  return (
-    <div className="group relative bg-card border border-border rounded-xl p-4 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all">
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-muted">{getIcon()}</div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              {getLabel()}
-            </Badge>
-          </div>
-          <h3 className="font-medium text-sm truncate mt-1">{getTitle()}</h3>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            {getSubtitle()}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {formatDate(data.createdAt)}
-          </p>
-        </div>
       </div>
     </div>
   );
