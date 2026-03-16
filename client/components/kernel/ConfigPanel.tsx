@@ -121,13 +121,13 @@ function renderCuratedKeyValuePairs(
           <label className="text-xs font-medium text-muted-foreground">
             Name
           </label>
-          <p className="text-sm mt-1 font-mono">{agent.name || "—"}</p>
+          <p className="text-sm mt-1">{agent.name || "—"}</p>
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground">
             Description
           </label>
-          <p className="text-sm mt-1 font-mono whitespace-pre-wrap">
+          <p className="text-sm mt-1 whitespace-pre-wrap">
             {agent.description || "—"}
           </p>
         </div>
@@ -135,15 +135,23 @@ function renderCuratedKeyValuePairs(
           <label className="text-xs font-medium text-muted-foreground">
             Persona
           </label>
-          <p className="text-sm mt-1 font-mono whitespace-pre-wrap">
+          <p className="text-sm mt-1 whitespace-pre-wrap">
             {agent.persona || "—"}
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            System Instructions
+          </label>
+          <p className="text-sm mt-1 whitespace-pre-wrap">
+            {agent.systemInstructions || "—"}
           </p>
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground">
             Status
           </label>
-          <p className="text-sm mt-1 font-mono">{agent.status || "—"}</p>
+          <p className="text-sm mt-1">{agent.status || "—"}</p>
         </div>
       </div>
     );
@@ -157,17 +165,13 @@ function renderCuratedKeyValuePairs(
           <label className="text-xs font-medium text-muted-foreground">
             Model
           </label>
-          <p className="text-sm mt-1 font-mono">
-            {session.config?.model || "—"}
-          </p>
+          <p className="text-sm mt-1">{session.config?.model || "—"}</p>
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground">
             API URL
           </label>
-          <p className="text-sm mt-1 font-mono">
-            {session.config?.apiUrl || "—"}
-          </p>
+          <p className="text-sm mt-1">{session.config?.apiUrl || "—"}</p>
         </div>
       </div>
     );
@@ -181,7 +185,7 @@ function renderCuratedKeyValuePairs(
           <label className="text-xs font-medium text-muted-foreground">
             Title
           </label>
-          <p className="text-sm mt-1 font-mono whitespace-pre-wrap">
+          <p className="text-sm mt-1 whitespace-pre-wrap">
             {conv.title || "—"}
           </p>
         </div>
@@ -189,19 +193,19 @@ function renderCuratedKeyValuePairs(
           <label className="text-xs font-medium text-muted-foreground">
             Session ID
           </label>
-          <p className="text-sm mt-1 font-mono">{conv.sessionId || "—"}</p>
+          <p className="text-sm mt-1">{conv.sessionId || "—"}</p>
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground">
             Agent ID
           </label>
-          <p className="text-sm mt-1 font-mono">{conv.agentId || "—"}</p>
+          <p className="text-sm mt-1">{conv.agentId || "—"}</p>
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground">
             Message Count
           </label>
-          <p className="text-sm mt-1 font-mono">{conv.messages?.length ?? 0}</p>
+          <p className="text-sm mt-1">{conv.messages?.length ?? 0}</p>
         </div>
       </div>
     );
