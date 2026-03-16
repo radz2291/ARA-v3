@@ -79,7 +79,7 @@ export const handleGetKernelList: RequestHandler = (req, res) => {
 
       return {
         ...session,
-        name: latestConv?.name || session.name,
+        name: session.name || "session",
         agentId: agentIdFromConv,
       };
     });
