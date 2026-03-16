@@ -234,6 +234,16 @@ class SessionsStorage {
   }
 
   delete(sessionId: string): boolean {
+    // Clean up references in conversations before deleting
+    const conversationsStorage = getConversationsStorage();
+    const conversations = conversationsStorage.list();
+    const conversationsToUpdate = conversations.filter(
+      (c) => c.sessionId === sessionId,
+    );
+    for (const conv of conversationsToUpdate) {
+      conversationsStorage.update(conv.id, { sessionId: undefined });
+    }
+
     const deleted = this.sessions.delete(sessionId);
     if (deleted) {
       this.debouncedSave();
@@ -444,6 +454,16 @@ class ConversationsStorage {
       );
   }
 
+  listByAgent(agentId: string): Conversation[] {
+    const convs = Array.from(this.conversations.values());
+    return convs
+      .filter((c) => c.agentId === agentId)
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+  }
+
   addMessage(
     conversationId: string,
     role: "user" | "assistant",
@@ -517,7 +537,7 @@ class ConversationsStorage {
 
   update(
     conversationId: string,
-    updates: Partial<Pick<Conversation, "agentId" | "title">>,
+    updates: Partial<Pick<Conversation, "agentId" | "sessionId" | "title">>,
   ): Conversation {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
@@ -1531,7 +1551,7 @@ export const storage = {
       getConversationsStorage().updateTitle(conversationId, title),
     update: (
       conversationId: string,
-      updates: Partial<Pick<Conversation, "agentId" | "title">>,
+      updates: Partial<Pick<Conversation, "agentId" | "sessionId" | "title">>,
     ) => getConversationsStorage().update(conversationId, updates),
     delete: (conversationId: string) =>
       getConversationsStorage().delete(conversationId),
