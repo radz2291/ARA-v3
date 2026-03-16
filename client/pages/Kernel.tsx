@@ -51,6 +51,7 @@ export default function Kernel() {
     artifacts: 0,
   });
   const [filters, setFilters] = useState<KernelFiltersState>(DEFAULT_FILTERS);
+  const [agentList, setAgentList] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<KernelDisplayType | null>(
     null,
@@ -69,6 +70,17 @@ export default function Kernel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const isFirstMount = useRef(true);
   const { toast } = useToast();
+
+  // Load agents list
+  const loadAgents = async () => {
+    try {
+      const res = await fetch("/api/agents");
+      const data: Agent[] = await res.json();
+      setAgentList(data);
+    } catch (error) {
+      console.error("Failed to load agents:", error);
+    }
+  };
 
   // Load lightweight kernel list
   const loadKernelList = async () => {
@@ -91,6 +103,7 @@ export default function Kernel() {
 
   useEffect(() => {
     loadKernelList();
+    loadAgents();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload when filters change (but not on first mount)
@@ -275,7 +288,7 @@ export default function Kernel() {
             <KernelFilters
               filters={filters}
               onChange={setFilters}
-              agents={[]}
+              agents={agentList}
             />
           </div>
         </div>
