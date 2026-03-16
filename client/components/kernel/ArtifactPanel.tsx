@@ -109,6 +109,7 @@ export function ArtifactPanel({
         <Tabs defaultValue="content" className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-5 mt-3 w-fit shrink-0">
             <TabsTrigger value="content">Content</TabsTrigger>
+            <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="history">
               History
               <span className="ml-1.5 text-xs text-muted-foreground">
@@ -132,6 +133,74 @@ export function ArtifactPanel({
                 </pre>
               </ScrollArea>
             )}
+          </TabsContent>
+
+          {/* Details tab */}
+          <TabsContent value="details" className="flex-1 min-h-0 p-5 pt-3">
+            <ScrollArea className="h-full">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Name
+                  </label>
+                  <p className="text-sm text-foreground mt-0.5">
+                    {artifact.name}
+                  </p>
+                </div>
+                {artifact.description && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Description
+                    </label>
+                    <p className="text-sm text-foreground mt-0.5">
+                      {artifact.description}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Type
+                  </label>
+                  <p className="text-sm text-foreground mt-0.5">{meta.label}</p>
+                </div>
+                {artifact.subtype && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Subtype
+                    </label>
+                    <p className="text-sm text-foreground mt-0.5">
+                      {artifact.subtype.replace(/_/g, " ")}
+                    </p>
+                  </div>
+                )}
+                {agentName && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Agent
+                    </label>
+                    <p className="text-sm text-foreground mt-0.5">
+                      {agentName}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Created
+                  </label>
+                  <p className="text-sm text-foreground mt-0.5">
+                    {new Date(artifact.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Updated
+                  </label>
+                  <p className="text-sm text-foreground mt-0.5">
+                    {new Date(artifact.updatedAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </ScrollArea>
           </TabsContent>
 
           {/* History tab */}
