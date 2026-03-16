@@ -23,7 +23,7 @@ const TOOLS_FILE = path.join(DATA_DIR, "tools.json");
 // ============================================
 
 const VALID_ARTIFACT_TYPES = ["output", "summary", "code"] as const;
-type ValidArtifactType = typeof VALID_ARTIFACT_TYPES[number];
+type ValidArtifactType = (typeof VALID_ARTIFACT_TYPES)[number];
 
 function isNonEmptyString(value: unknown, fieldName: string): void {
   if (typeof value !== "string" || value.trim() === "") {
@@ -35,7 +35,9 @@ function isValidArtifactType(type: string): type is ValidArtifactType {
   return VALID_ARTIFACT_TYPES.includes(type as ValidArtifactType);
 }
 
-function validateArtifactType(type: unknown): asserts type is ValidArtifactType {
+function validateArtifactType(
+  type: unknown,
+): asserts type is ValidArtifactType {
   if (typeof type !== "string" || !isValidArtifactType(type)) {
     throw new Error(
       `Invalid artifact type. Must be one of: ${VALID_ARTIFACT_TYPES.join(", ")}`,
@@ -513,12 +515,17 @@ class ConversationsStorage {
     return conversation;
   }
 
-  update(conversationId: string, updates: Partial<Pick<Conversation, "agentId" | "title">>): Conversation {
+  update(
+    conversationId: string,
+    updates: Partial<Pick<Conversation, "agentId" | "title">>,
+  ): Conversation {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} not found`);
     }
-    Object.assign(conversation, updates, { updatedAt: new Date().toISOString() });
+    Object.assign(conversation, updates, {
+      updatedAt: new Date().toISOString(),
+    });
     this.debouncedSave();
     return conversation;
   }
@@ -848,10 +855,6 @@ class AgentsStorage {
 
   delete(agentId: string): boolean {
     // Cascade delete: clean up references in conversations and artifacts
-    // Use lazy require to avoid circular dependency
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getConversationsStorage, getArtifactsStorage } = require("./storage");
-
     // Find all conversations with this agentId and clear agentId
     const conversations = getConversationsStorage().list();
     for (const conv of conversations) {
@@ -1389,7 +1392,9 @@ class ArtifactsStorage {
 
   updateMeta(
     artifactId: string,
-    updates: Partial<Pick<Artifact, "name" | "description" | "subtype" | "agentId">>,
+    updates: Partial<
+      Pick<Artifact, "name" | "description" | "subtype" | "agentId">
+    >,
   ): Artifact {
     const artifact = this.artifacts.get(artifactId);
     if (!artifact) throw new Error(`Artifact ${artifactId} not found`);
@@ -1524,8 +1529,10 @@ export const storage = {
       ),
     updateTitle: (conversationId: string, title: string) =>
       getConversationsStorage().updateTitle(conversationId, title),
-    update: (conversationId: string, updates: Partial<Pick<Conversation, "agentId" | "title">>) =>
-      getConversationsStorage().update(conversationId, updates),
+    update: (
+      conversationId: string,
+      updates: Partial<Pick<Conversation, "agentId" | "title">>,
+    ) => getConversationsStorage().update(conversationId, updates),
     delete: (conversationId: string) =>
       getConversationsStorage().delete(conversationId),
     updateMessage: (
@@ -1652,7 +1659,9 @@ export const storage = {
       getArtifactsStorage().update(artifactId, content, note),
     updateMeta: (
       artifactId: string,
-      updates: Partial<Pick<Artifact, "name" | "description" | "subtype" | "agentId">>,
+      updates: Partial<
+        Pick<Artifact, "name" | "description" | "subtype" | "agentId">
+      >,
     ) => getArtifactsStorage().updateMeta(artifactId, updates),
     restore: (artifactId: string, versionId: string) =>
       getArtifactsStorage().restore(artifactId, versionId),
