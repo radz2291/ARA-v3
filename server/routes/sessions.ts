@@ -152,10 +152,10 @@ export const handleDeleteSession: RequestHandler = (req, res) => {
   try {
     const { sessionId } = req.params;
 
-    // Delete all conversations for this session
+    // Clean up references in conversations instead of deleting
     const conversations = storage.conversations.listBySession(sessionId);
     conversations.forEach((conv) => {
-      storage.conversations.delete(conv.id);
+      storage.conversations.update(conv.id, { sessionId: undefined });
     });
 
     // Delete session
