@@ -173,3 +173,47 @@ export const handleDeleteSession: RequestHandler = (req, res) => {
     return res.status(500).json({ message });
   }
 };
+
+/**
+ * PATCH /api/sessions/:sessionId
+ * Update session configuration (model, apiUrl)
+ */
+export const handleUpdateSession: RequestHandler = (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { apiUrl, model } = req.body as { apiUrl?: string; model?: string };
+
+    const session = storage.sessions.get(sessionId);
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    // Update config if provided
+    if (session.config && (apiUrl !== undefined || model !== undefined)) {
+      const config: APIConfig = {
+        ...session.config,
+        apiUrl: apiUrl !== undefined ? apiUrl : session.config.apiUrl,
+        model: model !== undefined ? model : session.config.model,
+      };
+      storage.sessions.setConfig(sessionId, config);
+    }
+
+    const updatedSession = storage.sessions.get(sessionId);
+
+    return res.json({
+      id: updatedSession.id,
+      createdAt: updatedSession.createdAt,
+      config: updatedSession.config
+        ? {
+            model: updatedSession.config.model,
+            apiUrl: updatedSession.config.apiUrl,
+          }
+        : undefined,
+    });
+  } catch (error) {
+    console.error("Error updating session:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to update session";
+    return res.status(500).json({ message });
+  }
+};

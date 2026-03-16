@@ -13,6 +13,7 @@ import {
   handleSaveConfig,
   handleGetConfig,
   handleDeleteSession,
+  handleUpdateSession,
 } from "./routes/sessions";
 import {
   handleCreateConversation,
@@ -91,6 +92,7 @@ export function createServer() {
   app.post("/api/sessions/:sessionId/config", handleSaveConfig);
   app.get("/api/sessions/:sessionId/config", handleGetConfig);
   app.delete("/api/sessions/:sessionId", handleDeleteSession);
+  app.patch("/api/sessions/:sessionId", handleUpdateSession);
 
   // Conversation routes
   app.get("/api/conversations/:id", handleGetConversationById);

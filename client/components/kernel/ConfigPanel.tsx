@@ -60,40 +60,74 @@ export function ConfigPanel({
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Agent | null>(null);
+  const [editedSession, setEditedSession] = useState<{
+    model: string;
+    apiUrl: string;
+  } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleEdit = () => {
     if (itemType === "agent") {
       setEditedData({ ...(data as Agent) });
+    } else if (itemType === "session") {
+      const session = data as Session;
+      setEditedSession({
+        model: session.config?.model || "",
+        apiUrl: session.config?.apiUrl || "",
+      });
     }
     setIsEditing(true);
   };
 
   const handleSave = async () => {
-    if (!editedData || itemType !== "agent") return;
+    if (itemType === "agent" && editedData) {
+      setIsSaving(true);
+      try {
+        const res = await fetch(`/api/agents/${editedData.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(editedData),
+        });
 
-    setIsSaving(true);
-    try {
-      const res = await fetch(`/api/agents/${editedData.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editedData),
-      });
+        if (!res.ok) throw new Error("Failed to update");
 
-      if (!res.ok) throw new Error("Failed to update");
+        const updated = await res.json();
+        onUpdated?.(updated);
+        setIsEditing(false);
+        toast({ title: "Saved", description: "Agent updated successfully." });
+      } catch {
+        toast({
+          title: "Error",
+          description: "Could not update agent.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
+    } else if (itemType === "session" && editedSession) {
+      setIsSaving(true);
+      try {
+        const res = await fetch(`/api/sessions/${data.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(editedSession),
+        });
 
-      const updated = await res.json();
-      onUpdated?.(updated);
-      setIsEditing(false);
-      toast({ title: "Saved", description: "Agent updated successfully." });
-    } catch {
-      toast({
-        title: "Error",
-        description: "Could not update agent.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
+        if (!res.ok) throw new Error("Failed to update");
+
+        const updated = await res.json();
+        onUpdated?.(updated);
+        setIsEditing(false);
+        toast({ title: "Saved", description: "Session updated successfully." });
+      } catch {
+        toast({
+          title: "Error",
+          description: "Could not update session.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -114,11 +148,24 @@ export function ConfigPanel({
           variant: "destructive",
         });
       }
+    } else if (itemType === "session") {
+      try {
+        await fetch(`/api/sessions/${data.id}`, { method: "DELETE" });
+        onDeleted?.();
+        onClose();
+        toast({ title: "Deleted", description: "Session removed." });
+      } catch {
+        toast({
+          title: "Error",
+          description: "Could not delete session.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
-  const canEdit = itemType === "agent";
-  const canDelete = itemType === "agent";
+  const canEdit = itemType === "agent" || itemType === "session";
+  const canDelete = itemType === "agent" || itemType === "session";
 
   // Render agent form
   const renderAgentForm = () => {
@@ -217,6 +264,44 @@ export function ConfigPanel({
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+        </div>
+      </div>
+    );
+  };
+
+  // Render session form
+  const renderSessionForm = () => {
+    if (!editedSession) return null;
+
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Model
+          </label>
+          <input
+            type="text"
+            value={editedSession.model}
+            onChange={(e) =>
+              setEditedSession({ ...editedSession, model: e.target.value })
+            }
+            placeholder="e.g., gpt-4o"
+            className="w-full mt-1 px-3 py-2 text-sm border rounded-md bg-background"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            API URL
+          </label>
+          <input
+            type="text"
+            value={editedSession.apiUrl}
+            onChange={(e) =>
+              setEditedSession({ ...editedSession, apiUrl: e.target.value })
+            }
+            placeholder="e.g., https://api.openai.com/v1"
+            className="w-full mt-1 px-3 py-2 text-sm border rounded-md bg-background"
+          />
         </div>
       </div>
     );
@@ -343,7 +428,11 @@ export function ConfigPanel({
           <TabsContent value="config" className="flex-1 min-h-0 p-5 pt-3">
             <ScrollArea className="h-full">
               {isEditing && canEdit ? (
-                renderAgentForm()
+                itemType === "agent" ? (
+                  renderAgentForm()
+                ) : itemType === "session" ? (
+                  renderSessionForm()
+                ) : null
               ) : itemType === "agent" ? (
                 <div className="space-y-4">
                   <div>
