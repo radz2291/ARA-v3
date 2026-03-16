@@ -64,6 +64,8 @@ export function ConfigPanel({
     model: string;
     apiUrl: string;
   } | null>(null);
+  const [editedConversationTitle, setEditedConversationTitle] =
+    useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
 
   const handleEdit = () => {
@@ -75,6 +77,8 @@ export function ConfigPanel({
         model: session.config?.model || "",
         apiUrl: session.config?.apiUrl || "",
       });
+    } else if (itemType === "conversation") {
+      setEditedConversationTitle((data as Conversation).title);
     }
     setIsEditing(true);
   };
@@ -128,6 +132,33 @@ export function ConfigPanel({
       } finally {
         setIsSaving(false);
       }
+    } else if (itemType === "conversation") {
+      setIsSaving(true);
+      try {
+        const res = await fetch(`/api/conversations/${data.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: editedConversationTitle }),
+        });
+
+        if (!res.ok) throw new Error("Failed to update");
+
+        const updated = await res.json();
+        onUpdated?.(updated);
+        setIsEditing(false);
+        toast({
+          title: "Saved",
+          description: "Conversation updated successfully.",
+        });
+      } catch {
+        toast({
+          title: "Error",
+          description: "Could not update conversation.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -161,11 +192,30 @@ export function ConfigPanel({
           variant: "destructive",
         });
       }
+    } else if (itemType === "conversation") {
+      try {
+        await fetch(`/api/conversations/${data.id}`, { method: "DELETE" });
+        onDeleted?.();
+        onClose();
+        toast({ title: "Deleted", description: "Conversation removed." });
+      } catch {
+        toast({
+          title: "Error",
+          description: "Could not delete conversation.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
-  const canEdit = itemType === "agent" || itemType === "session";
-  const canDelete = itemType === "agent" || itemType === "session";
+  const canEdit =
+    itemType === "agent" ||
+    itemType === "session" ||
+    itemType === "conversation";
+  const canDelete =
+    itemType === "agent" ||
+    itemType === "session" ||
+    itemType === "conversation";
 
   // Render agent form
   const renderAgentForm = () => {
@@ -307,6 +357,25 @@ export function ConfigPanel({
     );
   };
 
+  // Render conversation form
+  const renderConversationForm = () => {
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Title
+          </label>
+          <input
+            type="text"
+            value={editedConversationTitle}
+            onChange={(e) => setEditedConversationTitle(e.target.value)}
+            className="w-full mt-1 px-3 py-2 text-sm border rounded-md bg-background"
+          />
+        </div>
+      </div>
+    );
+  };
+
   // Render JSON view
   const renderJsonView = () => {
     const json = JSON.stringify(data, null, 2);
@@ -432,6 +501,8 @@ export function ConfigPanel({
                   renderAgentForm()
                 ) : itemType === "session" ? (
                   renderSessionForm()
+                ) : itemType === "conversation" ? (
+                  renderConversationForm()
                 ) : null
               ) : itemType === "agent" ? (
                 <div className="space-y-4">
