@@ -160,10 +160,11 @@ export default function Kernel() {
           setSelectedSession(data as Session);
           break;
       }
-    } catch {
+    } catch (error) {
+      console.error("[Kernel] Error loading details:", error);
       toast({
         title: "Error",
-        description: `Could not load ${item.type} details.`,
+        description: `Could not load ${item.type} details. ${error instanceof Error ? error.message : ""}`,
         variant: "destructive",
       });
       setSelectedId(null);
@@ -217,6 +218,7 @@ export default function Kernel() {
   // Build a combined list of all kernel items for display
   type KernelDisplayItem = {
     itemType: KernelDataItemType;
+    type: KernelDataItemType; // Alias for handleItemClick compatibility
     id: string;
     name: string;
     subtype?: string;
@@ -227,6 +229,7 @@ export default function Kernel() {
 
   const allItems: KernelDisplayItem[] = listItems.map((item) => ({
     itemType: item.type,
+    type: item.type,
     id: item.id,
     name: item.name,
     subtype: item.subtype,
