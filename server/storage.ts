@@ -219,16 +219,18 @@ class SessionsStorage {
     createdAt: string;
     updatedAt: string;
     itemCount: number;
+    agentId?: string;
   }> {
     return Array.from(this.sessions.values())
       .map((s) => ({
         id: s.id,
-        name: "session",
+        name: s.config?.model || "session",
         type: "session" as const,
-        subtype: undefined,
+        subtype: s.config?.model,
         createdAt: s.createdAt,
         updatedAt: s.createdAt,
         itemCount: 0,
+        agentId: undefined, // Will be resolved by kernel route
       }))
       .sort(
         (a, b) =>
@@ -323,17 +325,38 @@ class ConversationsStorage {
     createdAt: string;
     updatedAt: string;
     itemCount: number;
+    agentId?: string;
+    sessionId?: string;
   }> {
     return Array.from(this.conversations.values())
-      .map((c) => ({
-        id: c.id,
-        name: c.title,
-        type: "conversation" as const,
-        subtype: c.agentId,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-        itemCount: c.messages.length,
-      }))
+      .map((c) => {
+        // Resolve agentId to agent name for subtype
+        // Note: getAgentsStorage is defined later in this file and available at runtime
+        let agentName: string | undefined;
+        if (c.agentId) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { getAgentsStorage } = require("./storage");
+            const agent = getAgentsStorage().get(c.agentId);
+            agentName = agent?.name;
+          } catch {
+            // Fallback if getAgentsStorage not available
+            agentName = undefined;
+          }
+        }
+
+        return {
+          id: c.id,
+          name: c.title,
+          type: "conversation" as const,
+          subtype: agentName,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          itemCount: c.messages.length,
+          agentId: c.agentId,
+          sessionId: c.sessionId,
+        };
+      })
       .sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
@@ -681,6 +704,7 @@ class AgentsStorage {
     createdAt: string;
     updatedAt: string;
     itemCount: number;
+    agentId: string;
   }> {
     return Array.from(this.agents.values())
       .map((a) => ({
@@ -691,6 +715,7 @@ class AgentsStorage {
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
         itemCount: a.toolIds.length,
+        agentId: a.id, // Agent's own ID for filtering
       }))
       .sort(
         (a, b) =>
@@ -1158,6 +1183,7 @@ class ArtifactsStorage {
     createdAt: string;
     updatedAt: string;
     itemCount: number;
+    agentId?: string;
   }> {
     return Array.from(this.artifacts.values())
       .map((a) => ({
@@ -1168,6 +1194,7 @@ class ArtifactsStorage {
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
         itemCount: a.versions.length,
+        agentId: a.agentId,
       }))
       .sort(
         (a, b) =>

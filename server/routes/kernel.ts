@@ -7,27 +7,12 @@
 import { RequestHandler } from "express";
 import { storage } from "../storage";
 
-// Type for items returned by the kernel data endpoint
+// Type for items returned by the kernel list endpoint
 export type KernelDataItemType =
   | "conversation"
   | "agent"
   | "session"
   | "artifact";
-
-export interface KernelDataItem<T = unknown> {
-  type: KernelDataItemType;
-  data: T;
-}
-
-interface KernelDataResponse {
-  items: KernelDataItem[];
-  counts: {
-    conversations: number;
-    agents: number;
-    sessions: number;
-    artifacts: number;
-  };
-}
 
 // Lightweight metadata for kernel list endpoint
 export interface KernelListItem {
@@ -38,6 +23,7 @@ export interface KernelListItem {
   createdAt: string;
   updatedAt: string;
   itemCount: number; // For conversations: message count, for artifacts: version count, for agents: tool count
+  agentId?: string; // For filtering by agent
 }
 
 interface KernelListResponse {
@@ -54,22 +40,74 @@ interface KernelListResponse {
  * GET /api/kernel/list
  * Returns lightweight metadata only for all kernel items
  * No content, messages, or full data - just for display in the grid
+ *
+ * Query params:
+ * - type: Filter by item type (conversation, agent, session, artifact)
+ * - search: Search in name field
+ * - agentId: Filter by agentId (for artifacts/sessions)
  */
-export const handleGetKernelList: RequestHandler = (_req, res) => {
+export const handleGetKernelList: RequestHandler = (req, res) => {
   try {
+    const { type, search, agentId } = req.query;
+
     // Fetch metadata only from storage (lightweight list)
     const sessions = storage.sessions.listMetadata();
     const agents = storage.agents.listMetadata();
     const conversations = storage.conversations.listMetadata();
     const artifacts = storage.artifacts.listMetadata();
 
+    // Build a map of session ID to agent ID from conversations
+    const sessionToAgentMap = new Map<string, string>();
+    conversations.forEach((conv) => {
+      if (
+        conv.sessionId &&
+        conv.agentId &&
+        !sessionToAgentMap.has(conv.sessionId)
+      ) {
+        sessionToAgentMap.set(conv.sessionId, conv.agentId);
+      }
+    });
+
+    // Resolve session agentId from conversations and derive name from latest conversation
+    const resolvedSessions = sessions.map((session) => {
+      const agentIdFromConv = sessionToAgentMap.get(session.id);
+      // Get conversations for this session
+      const sessionConvs = conversations.filter(
+        (c) => c.sessionId === session.id,
+      );
+      const latestConv = sessionConvs.length > 0 ? sessionConvs[0] : null;
+
+      return {
+        ...session,
+        name: latestConv?.name || session.name,
+        agentId: agentIdFromConv,
+      };
+    });
+
     // Combine all items
-    const items: KernelListItem[] = [
-      ...sessions,
+    let items: KernelListItem[] = [
+      ...resolvedSessions,
       ...agents,
       ...conversations,
       ...artifacts,
     ];
+
+    // Apply filters
+    if (type) {
+      items = items.filter((item) => item.type === type);
+    }
+
+    if (search) {
+      const searchLower = String(search).toLowerCase();
+      items = items.filter((item) =>
+        item.name.toLowerCase().includes(searchLower),
+      );
+    }
+
+    if (agentId) {
+      // Filter by agentId field
+      items = items.filter((item) => item.agentId === agentId);
+    }
 
     const response: KernelListResponse = {
       items,
@@ -85,69 +123,5 @@ export const handleGetKernelList: RequestHandler = (_req, res) => {
   } catch (error) {
     console.error("Error getting kernel list:", error);
     res.status(500).json({ error: "Failed to get kernel list" });
-  }
-};
-
-/**
- * GET /api/kernel/data
- * Returns all storage data with type information for Kernel synchronization
- */
-export const handleGetKernelData: RequestHandler = (_req, res) => {
-  try {
-    // Fetch all data from storage
-    const sessions = storage.sessions.list();
-    const agents = storage.agents.list();
-    const conversations = storage.conversations.list();
-    const artifacts = storage.artifacts.list();
-
-    // Build response with typed items
-    const items: KernelDataItem[] = [];
-
-    // Add sessions
-    for (const session of sessions) {
-      items.push({
-        type: "session",
-        data: session,
-      });
-    }
-
-    // Add agents
-    for (const agent of agents) {
-      items.push({
-        type: "agent",
-        data: agent,
-      });
-    }
-
-    // Add conversations
-    for (const conversation of conversations) {
-      items.push({
-        type: "conversation",
-        data: conversation,
-      });
-    }
-
-    // Add artifacts
-    for (const artifact of artifacts) {
-      items.push({
-        type: "artifact",
-        data: artifact,
-      });
-    }
-
-    const response: KernelDataResponse = {
-      items,
-      counts: {
-        conversations: conversations.length,
-        agents: agents.length,
-        sessions: sessions.length,
-        artifacts: artifacts.length,
-      },
-    };
-
-    res.json(response);
-  } catch (error) {
-    console.error("Error getting kernel data:", error);
-    res.status(500).json({ error: "Failed to get kernel data" });
   }
 };
