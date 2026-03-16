@@ -202,20 +202,20 @@ function SimpleCard({
   };
 
   const getSubtitle = () => {
-    // Handle lightweight data with itemCount
-    if ("itemCount" in data && data.itemCount !== undefined) {
-      return `${data.itemCount} message${data.itemCount !== 1 ? "s" : ""}`;
-    }
     switch (itemType) {
       case "agent":
-        return "Custom AI agent";
+        return "";
       case "conversation": {
+        // Handle lightweight data with itemCount
+        if ("itemCount" in data && data.itemCount !== undefined) {
+          return `${data.itemCount} message${data.itemCount !== 1 ? "s" : ""}`;
+        }
         const conv = data as Conversation;
         const msgCount = conv.messages?.length || 0;
         return `${msgCount} message${msgCount !== 1 ? "s" : ""}`;
       }
       case "session":
-        return "AI session configuration";
+        return "";
     }
   };
 
