@@ -9,10 +9,13 @@ import { KernelCard } from "@/components/kernel/KernelCard";
 import { ArtifactPanel } from "@/components/kernel/ArtifactPanel";
 import { ConfigPanel } from "@/components/kernel/ConfigPanel";
 import { useToast } from "@/hooks/use-toast";
-import type { Artifact, Agent, Conversation, Session } from "@shared/types";
-
-type KernelDataItemType = "conversation" | "agent" | "session" | "artifact";
-type KernelDisplayType = "artifact" | "agent" | "conversation" | "session";
+import type {
+  Artifact,
+  Agent,
+  Conversation,
+  Session,
+  KernelDataItemType,
+} from "@shared/types";
 
 // Lightweight list item from /api/kernel/list
 interface KernelListItem {
@@ -53,7 +56,7 @@ export default function Kernel() {
   const [filters, setFilters] = useState<KernelFiltersState>(DEFAULT_FILTERS);
   const [agentList, setAgentList] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<KernelDisplayType | null>(
+  const [selectedType, setSelectedType] = useState<KernelDataItemType | null>(
     null,
   );
 
@@ -82,11 +85,27 @@ export default function Kernel() {
     }
   };
 
-  // Load lightweight kernel list
-  const loadKernelList = async () => {
+  // Load lightweight kernel list with optional filters
+  const loadKernelList = async (filterParams?: KernelFiltersState) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/kernel/list");
+      // Build query params from filters
+      const params = new URLSearchParams();
+      if (filterParams?.type && filterParams.type !== "all") {
+        params.set("type", filterParams.type);
+      }
+      if (filterParams?.search) {
+        params.set("search", filterParams.search);
+      }
+      if (filterParams?.agentId) {
+        params.set("agentId", filterParams.agentId);
+      }
+
+      const queryString = params.toString();
+      const url = queryString
+        ? `/api/kernel/list?${queryString}`
+        : "/api/kernel/list";
+      const res = await fetch(url);
       const data: KernelListResponse = await res.json();
       setListItems(data.items);
       setCounts(data.counts);
@@ -112,7 +131,7 @@ export default function Kernel() {
       isFirstMount.current = false;
       return;
     }
-    loadKernelList();
+    loadKernelList(filters);
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch full detail when item is selected
@@ -231,7 +250,10 @@ export default function Kernel() {
 
   const handleSessionDeleted = (deletedId: string) => {
     setListItems((prev) => prev.filter((item) => item.id !== deletedId));
-    setCounts((prev) => ({ ...prev, sessions: Math.max(0, prev.sessions - 1) }));
+    setCounts((prev) => ({
+      ...prev,
+      sessions: Math.max(0, prev.sessions - 1),
+    }));
     setSelectedId(null);
     setSelectedType(null);
     setSelectedSession(null);
@@ -269,27 +291,6 @@ export default function Kernel() {
     updatedAt: item.updatedAt,
     itemCount: item.itemCount,
   }));
-
-  // Filter items based on current filters
-  const filteredItems = allItems.filter((item) => {
-    // Type filter
-    if (filters.type !== "all" && item.itemType !== filters.type) {
-      return false;
-    }
-    // Subtype filter
-    if (filters.subtype && item.subtype !== filters.subtype) {
-      return false;
-    }
-    // Agent filter
-    // Note: The list endpoint doesn't include agentId for artifacts
-    // Search filter - apply to all types
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      const matches = item.name?.toLowerCase().includes(searchLower);
-      if (!matches) return false;
-    }
-    return true;
-  });
 
   // Show loading indicator in panel area when fetching detail
   const showDetailLoading =
@@ -346,11 +347,11 @@ export default function Kernel() {
             <div className="flex items-center justify-center h-40">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : allItems.length === 0 ? (
             <EmptyState hasFilters={!!filters.search} />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredItems.map((item) => (
+              {allItems.map((item) => (
                 <KernelCard
                   key={item.id}
                   itemType={item.itemType}

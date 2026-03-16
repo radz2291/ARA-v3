@@ -207,6 +207,13 @@ export interface Artifact {
   updatedAt: string;
 }
 
+// Type for kernel list items
+export type KernelDataItemType =
+  | "conversation"
+  | "agent"
+  | "session"
+  | "artifact";
+
 export const ArtifactVersionSchema = z.object({
   id: z.string(),
   version: z.number(),
