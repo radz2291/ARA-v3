@@ -117,6 +117,7 @@ export default function Kernel() {
 
   // Fetch full detail when item is selected
   const handleItemClick = async (item: KernelListItem) => {
+    console.log("[Kernel] handleItemClick called:", item.type, item.id);
     setSelectedId(item.id);
     setSelectedType(item.type);
     setDetailLoading(true);
@@ -138,8 +139,10 @@ export default function Kernel() {
           break;
       }
 
+      console.log("[Kernel] Fetching endpoint:", endpoint);
       const res = await fetch(endpoint);
-      if (!res.ok) throw new Error("Failed to fetch");
+      console.log("[Kernel] Response status:", res.status);
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
 
       const data = await res.json();
 
@@ -253,6 +256,15 @@ export default function Kernel() {
     return true;
   });
 
+  // Show loading indicator in panel area when fetching detail
+  const showDetailLoading =
+    detailLoading &&
+    selectedId &&
+    !selectedArtifact &&
+    !selectedAgent &&
+    !selectedConversation &&
+    !selectedSession;
+
   return (
     <Layout>
       <div className="flex flex-col h-full overflow-hidden">
@@ -320,6 +332,16 @@ export default function Kernel() {
           )}
         </div>
       </div>
+
+      {/* Loading indicator in panel area */}
+      {showDetailLoading && (
+        <div className="fixed inset-y-0 right-0 w-[480px] bg-background border-l border-border shadow-lg flex items-center justify-center z-40">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading details...</p>
+          </div>
+        </div>
+      )}
 
       {/* Slide-over panel */}
       {selectedArtifact && selectedType === "artifact" && (
