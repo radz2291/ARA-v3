@@ -69,7 +69,10 @@ function ArtifactCard({
       (artifact.content.length > 120 ? "…" : "")
     : "No content";
 
-  const versionCount = artifact.versions?.length ?? artifact.itemCount ?? 0;
+  const versionCount =
+    artifact.versions?.length ??
+    ("itemCount" in artifact ? artifact.itemCount : null) ??
+    0;
 
   return (
     <div
@@ -132,7 +135,7 @@ function ArtifactCard({
           {formatDate(artifact.updatedAt)}
         </span>
         <span className="text-xs text-muted-foreground">
-          {artifactType === "conversation"
+          {"itemCount" in artifact && artifact.type === "conversation"
             ? (() => {
                 const count = artifact.content
                   ? getMessageCount(artifact.content)
@@ -186,13 +189,13 @@ function SimpleCard({
       return data.name || `Unnamed ${itemType}`;
     }
     if (itemType === "conversation") {
-      return data.name || "Untitled Conversation";
+      return "name" in data
+        ? data.name
+        : (data as Conversation).title || "Untitled Conversation";
     }
     switch (itemType) {
       case "agent":
         return (data as Agent).name || "Unnamed Agent";
-      case "conversation":
-        return (data as Conversation).title || "Untitled Conversation";
       case "session":
         return "Session";
     }
