@@ -205,6 +205,10 @@ export default function Kernel() {
     );
   };
 
+  const handleArtifactDeleted = (deletedId: string) => {
+    setListItems((prev) => prev.filter((item) => item.id !== deletedId));
+  };
+
   const handleAgentUpdated = (updated: Agent) => {
     setSelectedAgent(updated);
     // Update list item name if changed
@@ -356,6 +360,7 @@ export default function Kernel() {
             setSelectedArtifact(null);
           }}
           onUpdated={handleArtifactUpdated}
+          onDeleted={() => handleArtifactDeleted(selectedArtifact.id)}
         />
       )}
 

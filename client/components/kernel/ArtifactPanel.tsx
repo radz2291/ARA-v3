@@ -1,7 +1,9 @@
-import { X } from "lucide-react";
+import { X, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ARTIFACT_TYPES, isArtifactEditable } from "@shared/artifacts";
 import { ArtifactEditor } from "./ArtifactEditor";
@@ -14,6 +16,7 @@ interface ArtifactPanelProps {
   agentName?: string;
   onClose: () => void;
   onUpdated: (artifact: Artifact) => void;
+  onDeleted?: () => void;
 }
 
 export function ArtifactPanel({
@@ -21,10 +24,30 @@ export function ArtifactPanel({
   agentName,
   onClose,
   onUpdated,
+  onDeleted,
 }: ArtifactPanelProps) {
+  const { toast } = useToast();
   const meta = ARTIFACT_TYPES[artifact.type];
   const Icon = meta.icon;
   const editable = isArtifactEditable(artifact);
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete this ${artifact.type}? This cannot be undone.`))
+      return;
+
+    try {
+      await fetch(`/api/artifacts/${artifact.id}`, { method: "DELETE" });
+      onDeleted?.();
+      onClose();
+      toast({ title: "Deleted", description: `${artifact.type} removed.` });
+    } catch {
+      toast({
+        title: "Error",
+        description: `Could not delete ${artifact.type}.`,
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <>
@@ -66,6 +89,14 @@ export function ArtifactPanel({
               </p>
             )}
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDelete}
+            className="shrink-0 text-destructive hover:text-destructive"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
           <button
             onClick={onClose}
             className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
