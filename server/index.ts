@@ -63,7 +63,7 @@ import {
   handleDeleteArtifact,
   handleRestoreArtifact,
 } from "./routes/artifacts";
-import { handleGetKernelList, handleGetKernelData } from "./routes/kernel";
+import { handleGetKernelList } from "./routes/kernel";
 
 export function createServer() {
   const app = express();
@@ -162,7 +162,6 @@ export function createServer() {
 
   // Kernel aggregated routes
   app.get("/api/kernel/list", handleGetKernelList);
-  app.get("/api/kernel/data", handleGetKernelData);
 
   // Initialize essential tools on server start
   initializeEssentialTools();

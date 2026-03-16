@@ -115,7 +115,7 @@ export const handleUpdateArtifact: RequestHandler = (req, res) => {
       subtype !== undefined
     ) {
       // Validate subtype if provided
-      if (subtype && !isValidSubtype(artifact.type, subtype)) {
+      if (subtype && !isValidSubtype(artifact.type as ArtifactType, subtype)) {
         res.status(400).json({
           error: `Invalid subtype '${subtype}' for type '${artifact.type}'`,
         });

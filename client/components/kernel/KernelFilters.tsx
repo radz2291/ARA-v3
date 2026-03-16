@@ -9,14 +9,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import {
-  ARTIFACT_TYPES,
-  getSubtypes,
-  type ArtifactType,
-} from "@shared/artifacts";
+
+export type EntityType =
+  | "all"
+  | "artifact"
+  | "agent"
+  | "session"
+  | "conversation";
 
 export interface KernelFiltersState {
-  type: ArtifactType | "all";
+  type: EntityType;
   subtype: string;
   agentId: string;
   search: string;
@@ -33,23 +35,14 @@ interface KernelFiltersProps {
   agents: Agent[];
 }
 
-// Build type options from centralized ARTIFACT_TYPES
-const TYPE_OPTIONS: { label: string; value: ArtifactType | "all" }[] = [
+// Entity type options
+const TYPE_OPTIONS: { label: string; value: EntityType }[] = [
   { label: "All", value: "all" },
-  ...Object.entries(ARTIFACT_TYPES).map(([value, meta]) => ({
-    label: meta.label + (value === "system_config" ? "s" : "s"),
-    value: value as ArtifactType,
-  })),
+  { label: "Artifacts", value: "artifact" },
+  { label: "Agents", value: "agent" },
+  { label: "Sessions", value: "session" },
+  { label: "Conversations", value: "conversation" },
 ];
-
-// Build subtype options from centralized getSubtypes
-const getSubtypeOptions = (type: ArtifactType | "all") => {
-  if (type === "all") return [];
-  const subtypes = getSubtypes(type);
-  return subtypes.length > 0
-    ? [{ label: "All subtypes", value: "all" }, ...subtypes]
-    : [];
-};
 
 export function KernelFilters({
   filters,
@@ -59,12 +52,8 @@ export function KernelFilters({
   const update = (patch: Partial<KernelFiltersState>) =>
     onChange({ ...filters, ...patch });
 
-  const subtypeOptions = getSubtypeOptions(filters.type);
   const hasActiveFilters =
-    filters.type !== "all" ||
-    (filters.subtype && filters.subtype !== "all") ||
-    filters.agentId ||
-    filters.search;
+    filters.type !== "all" || filters.agentId || filters.search;
 
   return (
     <div className="flex flex-col gap-3">
@@ -88,27 +77,6 @@ export function KernelFilters({
 
       {/* Secondary filters row */}
       <div className="flex flex-wrap gap-2 items-center">
-        {/* Subtype dropdown — only show when a specific type is selected and it has subtypes */}
-        {subtypeOptions.length > 0 && (
-          <Select
-            value={filters.subtype || "all"}
-            onValueChange={(val) =>
-              update({ subtype: val === "all" ? "" : val })
-            }
-          >
-            <SelectTrigger className="w-44 h-9 text-sm">
-              <SelectValue placeholder="Subtype" />
-            </SelectTrigger>
-            <SelectContent>
-              {subtypeOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
         {/* Agent dropdown */}
         {agents.length > 0 && (
           <Select
