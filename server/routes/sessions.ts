@@ -59,7 +59,9 @@ export const handleGetSession: RequestHandler = (req, res) => {
     return res.json({
       id: session.id,
       createdAt: session.createdAt,
-      hasConfig: !!session.config,
+      config: session.config
+        ? { model: session.config.model, apiUrl: session.config.apiUrl }
+        : undefined,
     });
   } catch (error) {
     console.error("Error getting session:", error);
