@@ -484,17 +484,20 @@ export function ConfigPanel({
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="config" className="flex-1 flex flex-col min-h-0">
+        <Tabs
+          defaultValue={itemType === "conversation" ? "content" : "details"}
+          className="flex-1 flex flex-col min-h-0"
+        >
           <TabsList className="mx-5 mt-3 w-fit shrink-0">
-            <TabsTrigger value="config">Config</TabsTrigger>
             {itemType === "conversation" && (
-              <TabsTrigger value="messages">Messages</TabsTrigger>
+              <TabsTrigger value="content">Content</TabsTrigger>
             )}
+            <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="json">JSON</TabsTrigger>
           </TabsList>
 
-          {/* Config tab */}
-          <TabsContent value="config" className="flex-1 min-h-0 p-5 pt-3">
+          {/* Details tab */}
+          <TabsContent value="details" className="flex-1 min-h-0 p-5 pt-3">
             <ScrollArea className="h-full">
               {isEditing && canEdit ? (
                 itemType === "agent" ? (
@@ -591,9 +594,9 @@ export function ConfigPanel({
             </ScrollArea>
           </TabsContent>
 
-          {/* Messages tab (conversation only) */}
+          {/* Content tab (conversation only) */}
           {itemType === "conversation" && (
-            <TabsContent value="messages" className="flex-1 min-h-0 p-5 pt-3">
+            <TabsContent value="content" className="flex-1 min-h-0 p-5 pt-3">
               <ScrollArea className="h-full">
                 {renderConversationMessages()}
               </ScrollArea>
