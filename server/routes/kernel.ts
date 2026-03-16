@@ -56,27 +56,19 @@ export const handleGetKernelList: RequestHandler = (req, res) => {
     const conversations = storage.conversations.listMetadata();
     const artifacts = storage.artifacts.listMetadata();
 
-    // Build a map of session ID to agent ID from conversations
-    const sessionToAgentMap = new Map<string, string>();
-    conversations.forEach((conv) => {
-      if (
-        conv.sessionId &&
-        conv.agentId &&
-        !sessionToAgentMap.has(conv.sessionId)
-      ) {
-        sessionToAgentMap.set(conv.sessionId, conv.agentId);
-      }
-    });
-
-    // Resolve session agentId from conversations and use config.model for name
+    // Resolve session agentId from first conversation and use config.model for name
     const resolvedSessions: KernelListItem[] = sessions.map((session) => {
-      const agentIdFromConv = sessionToAgentMap.get(session.id);
+      // Find first conversation for this session to get agent
+      const firstConv = conversations.find(
+        (conv) => conv.sessionId === session.id,
+      );
+      const agentIdFromConv = firstConv?.agentId;
 
       return {
         id: session.id,
         name: session.config?.model || "session",
         type: "session" as const,
-        subtype: session.config?.model,
+        subtype: agentIdFromConv ? session.config?.model : "Unassigned",
         createdAt: session.createdAt,
         updatedAt: session.createdAt,
         itemCount: 0,
