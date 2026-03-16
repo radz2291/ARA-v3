@@ -20,6 +20,7 @@ import {
   handleListConversations,
   handleGetConversation,
   handleGetConversationById,
+  handleDeleteConversationById,
   handleAddMessage,
   handleUpdateConversation,
   handleDeleteConversation,
@@ -96,6 +97,7 @@ export function createServer() {
 
   // Conversation routes
   app.get("/api/conversations/:id", handleGetConversationById);
+  app.delete("/api/conversations/:id", handleDeleteConversationById);
   app.post("/api/sessions/:sessionId/conversations", handleCreateConversation);
   app.get("/api/sessions/:sessionId/conversations", handleListConversations);
   app.get(

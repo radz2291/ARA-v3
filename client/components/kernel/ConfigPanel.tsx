@@ -5,15 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import type { Agent, Session, Conversation } from "@shared/types";
+import type { Agent, Session, Conversation, Artifact } from "@shared/types";
 
-type ConfigItemType = "agent" | "session" | "conversation";
+type ConfigItemType = "agent" | "session" | "conversation" | "artifact";
 
 interface ConfigPanelProps {
   itemType: ConfigItemType;
-  data: Agent | Session | Conversation;
+  data: Agent | Session | Conversation | Artifact;
   onClose: () => void;
-  onUpdated?: (data: Agent | Session | Conversation) => void;
+  onUpdated?: (data: Agent | Session | Conversation | Artifact) => void;
   onDeleted?: () => void;
 }
 
@@ -222,6 +222,8 @@ function getLabel(type: ConfigItemType): string {
       return "Session";
     case "conversation":
       return "Conversation";
+    case "artifact":
+      return "Artifact";
   }
 }
 
@@ -233,6 +235,8 @@ function getIcon(type: ConfigItemType) {
       return "⚙️";
     case "conversation":
       return "💬";
+    case "artifact":
+      return "📄";
   }
 }
 
@@ -380,7 +384,13 @@ export function ConfigPanel({
       }
     } else if (itemType === "conversation") {
       try {
-        await fetch(`/api/conversations/${data.id}`, { method: "DELETE" });
+        const conv = data as Conversation;
+        await fetch(
+          `/api/sessions/${conv.sessionId}/conversations/${data.id}`,
+          {
+            method: "DELETE",
+          },
+        );
         onDeleted?.();
         onClose();
         toast({ title: "Deleted", description: "Conversation removed." });
@@ -388,6 +398,19 @@ export function ConfigPanel({
         toast({
           title: "Error",
           description: "Could not delete conversation.",
+          variant: "destructive",
+        });
+      }
+    } else if (itemType === "artifact") {
+      try {
+        await fetch(`/api/artifacts/${data.id}`, { method: "DELETE" });
+        onDeleted?.();
+        onClose();
+        toast({ title: "Deleted", description: "Artifact removed." });
+      } catch {
+        toast({
+          title: "Error",
+          description: "Could not delete artifact.",
           variant: "destructive",
         });
       }
@@ -401,7 +424,8 @@ export function ConfigPanel({
   const canDelete =
     itemType === "agent" ||
     itemType === "session" ||
-    itemType === "conversation";
+    itemType === "conversation" ||
+    itemType === "artifact";
 
   // Render agent form
   const renderAgentForm = () => {

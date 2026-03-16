@@ -39,6 +39,36 @@ export const handleGetConversationById: RequestHandler = (req, res) => {
 };
 
 /**
+ * DELETE /api/conversations/:id
+ * Delete a conversation directly by ID (for Kernel ConfigPanel)
+ */
+export const handleDeleteConversationById: RequestHandler = (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get conversation directly by ID
+    const conversation = storage.conversations.get(id);
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    // Delete conversation
+    const deleted = storage.conversations.delete(id);
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    return res.json({ deleted: true });
+  } catch (error) {
+    console.error("Error deleting conversation by ID:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to delete conversation";
+    return res.status(500).json({ message });
+  }
+};
+
+/**
  * POST /api/sessions/:sessionId/conversations
  * Create a new conversation
  */
