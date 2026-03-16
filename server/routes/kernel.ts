@@ -45,16 +45,28 @@ interface KernelListResponse {
  * - type: Filter by item type (conversation, agent, session, artifact)
  * - search: Search in name field
  * - agentId: Filter by agentId (for artifacts/sessions)
+ * - limit: Max items to return (for pagination)
+ * - before: Cursor timestamp for pagination (items before this date)
  */
 export const handleGetKernelList: RequestHandler = (req, res) => {
   try {
-    const { type, search, agentId } = req.query;
+    const { type, search, agentId, limit, before } = req.query;
+
+    // Parse pagination options
+    const limitNum = limit ? parseInt(String(limit), 10) : undefined;
+    const cursor = before ? String(before) : undefined;
 
     // Fetch full session data to access config.model
     const sessions = storage.sessions.list();
-    const agents = storage.agents.listMetadata();
-    const conversations = storage.conversations.listMetadata();
-    const artifacts = storage.artifacts.listMetadata();
+    const agents = storage.agents.listMetadata({ limit: limitNum, cursor });
+    const conversations = storage.conversations.listMetadata({
+      limit: limitNum,
+      cursor,
+    });
+    const artifacts = storage.artifacts.listMetadata({
+      limit: limitNum,
+      cursor,
+    });
 
     // Resolve session agentId from first conversation and use config.model for name
     const resolvedSessions: KernelListItem[] = sessions.map((session) => {
@@ -83,6 +95,19 @@ export const handleGetKernelList: RequestHandler = (req, res) => {
       ...conversations,
       ...artifacts,
     ];
+
+    // Apply cursor filter to combined items (for sessions which use list())
+    if (cursor) {
+      const cursorTime = new Date(cursor).getTime();
+      items = items.filter(
+        (item) => new Date(item.updatedAt).getTime() < cursorTime,
+      );
+    }
+
+    // Apply limit to combined items
+    if (limitNum && limitNum > 0) {
+      items = items.slice(0, limitNum);
+    }
 
     // Apply filters
     if (type) {

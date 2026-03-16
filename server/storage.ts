@@ -240,7 +240,10 @@ class SessionsStorage {
   }
 
   // Lightweight list that returns metadata only
-  listMetadata(): Array<{
+  listMetadata(options?: {
+    limit?: number;
+    cursor?: string; // timestamp for pagination
+  }): Array<{
     id: string;
     name: string;
     type: "session";
@@ -250,7 +253,7 @@ class SessionsStorage {
     itemCount: number;
     agentId?: string;
   }> {
-    return Array.from(this.sessions.values())
+    let items = Array.from(this.sessions.values())
       .map((s) => ({
         id: s.id,
         name: s.config?.model || "session",
@@ -265,6 +268,21 @@ class SessionsStorage {
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
+
+    // Apply cursor filter (items before the cursor timestamp)
+    if (options?.cursor) {
+      const cursorTime = new Date(options.cursor).getTime();
+      items = items.filter(
+        (item) => new Date(item.createdAt).getTime() < cursorTime,
+      );
+    }
+
+    // Apply limit
+    if (options?.limit && options.limit > 0) {
+      items = items.slice(0, options.limit);
+    }
+
+    return items;
   }
 
   list(): Session[] {
@@ -346,7 +364,10 @@ class ConversationsStorage {
   }
 
   // Lightweight list that returns metadata only (no content)
-  listMetadata(): Array<{
+  listMetadata(options?: {
+    limit?: number;
+    cursor?: string; // timestamp for pagination
+  }): Array<{
     id: string;
     name: string;
     type: "conversation";
@@ -357,15 +378,12 @@ class ConversationsStorage {
     agentId?: string;
     sessionId?: string;
   }> {
-    return Array.from(this.conversations.values())
+    let items = Array.from(this.conversations.values())
       .map((c) => {
         // Resolve agentId to agent name for subtype
-        // Note: getAgentsStorage is defined later in this file and available at runtime
         let agentName: string | undefined;
         if (c.agentId) {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { getAgentsStorage } = require("./storage");
             const agent = getAgentsStorage().get(c.agentId);
             agentName = agent?.name;
           } catch {
@@ -390,6 +408,21 @@ class ConversationsStorage {
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
+
+    // Apply cursor filter (items before the cursor timestamp)
+    if (options?.cursor) {
+      const cursorTime = new Date(options.cursor).getTime();
+      items = items.filter(
+        (item) => new Date(item.updatedAt).getTime() < cursorTime,
+      );
+    }
+
+    // Apply limit
+    if (options?.limit && options.limit > 0) {
+      items = items.slice(0, options.limit);
+    }
+
+    return items;
   }
 
   list(): Conversation[] {
@@ -739,7 +772,10 @@ class AgentsStorage {
   }
 
   // Lightweight list that returns metadata only (no content)
-  listMetadata(): Array<{
+  listMetadata(options?: {
+    limit?: number;
+    cursor?: string; // timestamp for pagination
+  }): Array<{
     id: string;
     name: string;
     type: "agent";
@@ -749,7 +785,7 @@ class AgentsStorage {
     itemCount: number;
     agentId: string;
   }> {
-    return Array.from(this.agents.values())
+    let items = Array.from(this.agents.values())
       .map((a) => ({
         id: a.id,
         name: a.name,
@@ -764,6 +800,21 @@ class AgentsStorage {
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
+
+    // Apply cursor filter (items before the cursor timestamp)
+    if (options?.cursor) {
+      const cursorTime = new Date(options.cursor).getTime();
+      items = items.filter(
+        (item) => new Date(item.createdAt).getTime() < cursorTime,
+      );
+    }
+
+    // Apply limit
+    if (options?.limit && options.limit > 0) {
+      items = items.slice(0, options.limit);
+    }
+
+    return items;
   }
 
   list(): Agent[] {
@@ -1241,7 +1292,10 @@ class ArtifactsStorage {
   }
 
   // Lightweight list that returns metadata only (no content)
-  listMetadata(): Array<{
+  listMetadata(options?: {
+    limit?: number;
+    cursor?: string; // timestamp for pagination
+  }): Array<{
     id: string;
     name: string;
     type: "artifact";
@@ -1251,7 +1305,7 @@ class ArtifactsStorage {
     itemCount: number;
     agentId?: string;
   }> {
-    return Array.from(this.artifacts.values())
+    let items = Array.from(this.artifacts.values())
       .map((a) => ({
         id: a.id,
         name: a.name,
@@ -1266,6 +1320,21 @@ class ArtifactsStorage {
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
+
+    // Apply cursor filter (items before the cursor timestamp)
+    if (options?.cursor) {
+      const cursorTime = new Date(options.cursor).getTime();
+      items = items.filter(
+        (item) => new Date(item.updatedAt).getTime() < cursorTime,
+      );
+    }
+
+    // Apply limit
+    if (options?.limit && options.limit > 0) {
+      items = items.slice(0, options.limit);
+    }
+
+    return items;
   }
 
   list(filters?: {
@@ -1424,7 +1493,8 @@ export const storage = {
     getConfig: (sessionId: string) => getSessionsStorage().getConfig(sessionId),
     delete: (sessionId: string) => getSessionsStorage().delete(sessionId),
     list: () => getSessionsStorage().list(),
-    listMetadata: () => getSessionsStorage().listMetadata(),
+    listMetadata: (options?: { limit?: number; cursor?: string }) =>
+      getSessionsStorage().listMetadata(options),
   },
   conversations: {
     create: (sessionId: string, title: string, agentId?: string) =>
@@ -1432,7 +1502,8 @@ export const storage = {
     get: (conversationId: string) =>
       getConversationsStorage().get(conversationId),
     list: () => getConversationsStorage().list(),
-    listMetadata: () => getConversationsStorage().listMetadata(),
+    listMetadata: (options?: { limit?: number; cursor?: string }) =>
+      getConversationsStorage().listMetadata(options),
     listBySession: (sessionId: string) =>
       getConversationsStorage().listBySession(sessionId),
     addMessage: (
@@ -1497,7 +1568,8 @@ export const storage = {
       ),
     get: (agentId: string) => getAgentsStorage().get(agentId),
     list: () => getAgentsStorage().list(),
-    listMetadata: () => getAgentsStorage().listMetadata(),
+    listMetadata: (options?: { limit?: number; cursor?: string }) =>
+      getAgentsStorage().listMetadata(options),
     update: (
       agentId: string,
       updates: Partial<Omit<Agent, "id" | "createdAt">>,
@@ -1574,7 +1646,8 @@ export const storage = {
       agentId?: string;
       search?: string;
     }) => getArtifactsStorage().list(filters),
-    listMetadata: () => getArtifactsStorage().listMetadata(),
+    listMetadata: (options?: { limit?: number; cursor?: string }) =>
+      getArtifactsStorage().listMetadata(options),
     update: (artifactId: string, content: string, note?: string) =>
       getArtifactsStorage().update(artifactId, content, note),
     updateMeta: (
