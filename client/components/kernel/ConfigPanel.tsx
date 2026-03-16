@@ -109,6 +109,107 @@ function renderKeyValuePairs(data: Agent | Session | Conversation) {
   );
 }
 
+function renderCuratedKeyValuePairs(
+  data: Agent | Session | Conversation,
+  itemType: ConfigItemType,
+) {
+  if (itemType === "agent") {
+    const agent = data as Agent;
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Name
+          </label>
+          <p className="text-sm mt-1 font-mono">{agent.name || "—"}</p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Description
+          </label>
+          <p className="text-sm mt-1 font-mono whitespace-pre-wrap">
+            {agent.description || "—"}
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Persona
+          </label>
+          <p className="text-sm mt-1 font-mono whitespace-pre-wrap">
+            {agent.persona || "—"}
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Status
+          </label>
+          <p className="text-sm mt-1 font-mono">{agent.status || "—"}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (itemType === "session") {
+    const session = data as Session;
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Model
+          </label>
+          <p className="text-sm mt-1 font-mono">
+            {session.config?.model || "—"}
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            API URL
+          </label>
+          <p className="text-sm mt-1 font-mono">
+            {session.config?.apiUrl || "—"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (itemType === "conversation") {
+    const conv = data as Conversation;
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Title
+          </label>
+          <p className="text-sm mt-1 font-mono whitespace-pre-wrap">
+            {conv.title || "—"}
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Session ID
+          </label>
+          <p className="text-sm mt-1 font-mono">{conv.sessionId || "—"}</p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Agent ID
+          </label>
+          <p className="text-sm mt-1 font-mono">{conv.agentId || "—"}</p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Message Count
+          </label>
+          <p className="text-sm mt-1 font-mono">{conv.messages?.length ?? 0}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function getLabel(type: ConfigItemType): string {
   switch (type) {
     case "agent":
@@ -566,19 +667,19 @@ export function ConfigPanel({
 
         {/* Tabs */}
         <Tabs
-          defaultValue={itemType === "conversation" ? "content" : "details"}
+          defaultValue={itemType === "conversation" ? "content" : "info"}
           className="flex-1 flex flex-col min-h-0"
         >
           <TabsList className="mx-5 mt-3 w-fit shrink-0">
             {itemType === "conversation" && (
               <TabsTrigger value="content">Content</TabsTrigger>
             )}
-            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="json">JSON</TabsTrigger>
           </TabsList>
 
-          {/* Details tab */}
-          <TabsContent value="details" className="flex-1 min-h-0 p-5 pt-3">
+          {/* Info tab */}
+          <TabsContent value="info" className="flex-1 min-h-0 p-5 pt-3">
             <ScrollArea className="h-full">
               {isEditing && canEdit
                 ? itemType === "agent"
@@ -588,7 +689,7 @@ export function ConfigPanel({
                     : itemType === "conversation"
                       ? renderConversationForm()
                       : null
-                : renderKeyValuePairs(data)}
+                : renderCuratedKeyValuePairs(data, itemType)}
             </ScrollArea>
           </TabsContent>
 
