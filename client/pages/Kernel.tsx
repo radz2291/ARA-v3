@@ -209,6 +209,34 @@ export default function Kernel() {
     setListItems((prev) => prev.filter((item) => item.id !== deletedId));
   };
 
+  const handleAgentDeleted = (deletedId: string) => {
+    setListItems((prev) => prev.filter((item) => item.id !== deletedId));
+    setCounts((prev) => ({ ...prev, agents: Math.max(0, prev.agents - 1) }));
+    setAgentList((prev) => prev.filter((agent) => agent.id !== deletedId));
+    setSelectedId(null);
+    setSelectedType(null);
+    setSelectedAgent(null);
+  };
+
+  const handleConversationDeleted = (deletedId: string) => {
+    setListItems((prev) => prev.filter((item) => item.id !== deletedId));
+    setCounts((prev) => ({
+      ...prev,
+      conversations: Math.max(0, prev.conversations - 1),
+    }));
+    setSelectedId(null);
+    setSelectedType(null);
+    setSelectedConversation(null);
+  };
+
+  const handleSessionDeleted = (deletedId: string) => {
+    setListItems((prev) => prev.filter((item) => item.id !== deletedId));
+    setCounts((prev) => ({ ...prev, sessions: Math.max(0, prev.sessions - 1) }));
+    setSelectedId(null);
+    setSelectedType(null);
+    setSelectedSession(null);
+  };
+
   const handleAgentUpdated = (updated: Agent) => {
     setSelectedAgent(updated);
     // Update list item name if changed
@@ -375,6 +403,7 @@ export default function Kernel() {
             setSelectedAgent(null);
           }}
           onUpdated={(updated) => handleAgentUpdated(updated as Agent)}
+          onDeleted={() => handleAgentDeleted(selectedAgent.id)}
         />
       )}
 
@@ -387,6 +416,7 @@ export default function Kernel() {
             setSelectedType(null);
             setSelectedConversation(null);
           }}
+          onDeleted={() => handleConversationDeleted(selectedConversation.id)}
         />
       )}
 
@@ -399,6 +429,7 @@ export default function Kernel() {
             setSelectedType(null);
             setSelectedSession(null);
           }}
+          onDeleted={() => handleSessionDeleted(selectedSession.id)}
         />
       )}
     </Layout>

@@ -18,6 +18,31 @@ const AGENTS_FILE = path.join(DATA_DIR, "agents.json");
 const WORKSPACES_FILE = path.join(DATA_DIR, "workspaces.json");
 const TOOLS_FILE = path.join(DATA_DIR, "tools.json");
 
+// ============================================
+// Validation Helper Functions
+// ============================================
+
+const VALID_ARTIFACT_TYPES = ["output", "summary", "code"] as const;
+type ValidArtifactType = typeof VALID_ARTIFACT_TYPES[number];
+
+function isNonEmptyString(value: unknown, fieldName: string): void {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${fieldName} must be a non-empty string`);
+  }
+}
+
+function isValidArtifactType(type: string): type is ValidArtifactType {
+  return VALID_ARTIFACT_TYPES.includes(type as ValidArtifactType);
+}
+
+function validateArtifactType(type: unknown): asserts type is ValidArtifactType {
+  if (typeof type !== "string" || !isValidArtifactType(type)) {
+    throw new Error(
+      `Invalid artifact type. Must be one of: ${VALID_ARTIFACT_TYPES.join(", ")}`,
+    );
+  }
+}
+
 // Ensure data directory exists
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -188,6 +213,10 @@ class SessionsStorage {
   }
 
   setConfig(sessionId: string, config: APIConfig): Session {
+    // Validate config
+    isNonEmptyString(config.apiKey, "apiKey");
+    isNonEmptyString(config.model, "model");
+
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
@@ -451,6 +480,16 @@ class ConversationsStorage {
     return conversation;
   }
 
+  update(conversationId: string, updates: Partial<Pick<Conversation, "agentId" | "title">>): Conversation {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+    Object.assign(conversation, updates, { updatedAt: new Date().toISOString() });
+    this.debouncedSave();
+    return conversation;
+  }
+
   delete(conversationId: string): boolean {
     const deleted = this.conversations.delete(conversationId);
     if (deleted) {
@@ -675,6 +714,10 @@ class AgentsStorage {
     systemInstructions: string,
     toolIds: string[] = [],
   ): Agent {
+    // Validate required fields
+    isNonEmptyString(name, "name");
+    isNonEmptyString(persona, "persona");
+
     const agent: Agent = {
       id: randomUUID(),
       name,
@@ -753,6 +796,25 @@ class AgentsStorage {
   }
 
   delete(agentId: string): boolean {
+    // Cascade delete: clean up references in conversations and artifacts
+    // Use lazy require to avoid circular dependency
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getConversationsStorage, getArtifactsStorage } = require("./storage");
+
+    // Find all conversations with this agentId and clear agentId
+    const conversations = getConversationsStorage().list();
+    for (const conv of conversations) {
+      if (conv.agentId === agentId) {
+        getConversationsStorage().update(conv.id, { agentId: undefined });
+      }
+    }
+
+    // Find all artifacts with this agentId and clear agentId
+    const artifacts = getArtifactsStorage().list({ agentId });
+    for (const artifact of artifacts) {
+      getArtifactsStorage().updateMeta(artifact.id, { agentId: undefined });
+    }
+
     const deleted = this.agents.delete(agentId);
     if (deleted) {
       this.debouncedSave();
@@ -1149,6 +1211,10 @@ class ArtifactsStorage {
   create(
     data: Omit<Artifact, "id" | "versions" | "createdAt" | "updatedAt">,
   ): Artifact {
+    // Validate required fields
+    isNonEmptyString(data.name, "name");
+    validateArtifactType(data.type);
+
     const now = new Date().toISOString();
     const artifact: Artifact = {
       ...data,
@@ -1254,7 +1320,7 @@ class ArtifactsStorage {
 
   updateMeta(
     artifactId: string,
-    updates: Partial<Pick<Artifact, "name" | "description" | "subtype">>,
+    updates: Partial<Pick<Artifact, "name" | "description" | "subtype" | "agentId">>,
   ): Artifact {
     const artifact = this.artifacts.get(artifactId);
     if (!artifact) throw new Error(`Artifact ${artifactId} not found`);
@@ -1387,6 +1453,8 @@ export const storage = {
       ),
     updateTitle: (conversationId: string, title: string) =>
       getConversationsStorage().updateTitle(conversationId, title),
+    update: (conversationId: string, updates: Partial<Pick<Conversation, "agentId" | "title">>) =>
+      getConversationsStorage().update(conversationId, updates),
     delete: (conversationId: string) =>
       getConversationsStorage().delete(conversationId),
     updateMessage: (
@@ -1511,7 +1579,7 @@ export const storage = {
       getArtifactsStorage().update(artifactId, content, note),
     updateMeta: (
       artifactId: string,
-      updates: Partial<Pick<Artifact, "name" | "description" | "subtype">>,
+      updates: Partial<Pick<Artifact, "name" | "description" | "subtype" | "agentId">>,
     ) => getArtifactsStorage().updateMeta(artifactId, updates),
     restore: (artifactId: string, versionId: string) =>
       getArtifactsStorage().restore(artifactId, versionId),
