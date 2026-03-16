@@ -17,6 +17,13 @@ interface ConfigPanelProps {
   onDeleted?: () => void;
 }
 
+function formatKey(key: string): string {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (str) => str.toUpperCase())
+    .trim();
+}
+
 function formatDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, {
@@ -26,6 +33,80 @@ function formatDate(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value || "—";
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    // Special handling for messages array - show count
+    if (value.length > 0 && "role" in (value[0] as object)) {
+      return `${value.length} message${value.length === 1 ? "" : "s"}`;
+    }
+    return value.join(", ") || "—";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function renderKeyValuePairs(data: Agent | Session | Conversation) {
+  const entries = Object.entries(data);
+
+  return (
+    <div className="space-y-4">
+      {entries.map(([key, value]) => {
+        // Skip messages in non-conversation types (though they're not there)
+        if (key === "messageGraph") return null;
+
+        // Handle nested config object for sessions
+        if (key === "config" && value && typeof value === "object") {
+          return (
+            <div key={key}>
+              <label className="text-xs font-medium text-muted-foreground">
+                {formatKey(key)}
+              </label>
+              <div className="mt-1 space-y-2 pl-3 border-l-2 border-muted">
+                {Object.entries(value as Record<string, unknown>).map(
+                  ([nestedKey, nestedValue]) => (
+                    <div key={nestedKey}>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        {formatKey(nestedKey)}
+                      </label>
+                      <p className="text-sm mt-0.5 font-mono">
+                        {nestedKey === "apiKey"
+                          ? nestedValue
+                            ? "••••••••"
+                            : "—"
+                          : formatValue(nestedValue)}
+                      </p>
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div key={key}>
+            <label className="text-xs font-medium text-muted-foreground">
+              {formatKey(key)}
+            </label>
+            <p className="text-sm mt-1 font-mono whitespace-pre-wrap">
+              {key === "id" || key.endsWith("Id")
+                ? formatValue(value)
+                : formatValue(value)}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function getLabel(type: ConfigItemType): string {
@@ -499,98 +580,15 @@ export function ConfigPanel({
           {/* Details tab */}
           <TabsContent value="details" className="flex-1 min-h-0 p-5 pt-3">
             <ScrollArea className="h-full">
-              {isEditing && canEdit ? (
-                itemType === "agent" ? (
-                  renderAgentForm()
-                ) : itemType === "session" ? (
-                  renderSessionForm()
-                ) : itemType === "conversation" ? (
-                  renderConversationForm()
-                ) : null
-              ) : itemType === "agent" ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Description
-                    </label>
-                    <p className="text-sm mt-1">
-                      {(data as Agent).description || "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Persona
-                    </label>
-                    <p className="text-sm mt-1">
-                      {(data as Agent).persona || "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      System Instructions
-                    </label>
-                    <ScrollArea className="h-48 mt-1 border rounded-md p-3">
-                      <pre className="text-xs font-mono whitespace-pre-wrap">
-                        {(data as Agent).systemInstructions || "—"}
-                      </pre>
-                    </ScrollArea>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Tools
-                    </label>
-                    <p className="text-sm mt-1">
-                      {(data as Agent).toolIds.length > 0
-                        ? (data as Agent).toolIds.join(", ")
-                        : "None"}
-                    </p>
-                  </div>
-                </div>
-              ) : itemType === "session" ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Session ID
-                    </label>
-                    <p className="text-sm mt-1 font-mono">
-                      {(data as Session).id}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Config
-                    </label>
-                    <ScrollArea className="h-48 mt-1 border rounded-md p-3">
-                      <pre className="text-xs font-mono whitespace-pre-wrap">
-                        {JSON.stringify(
-                          (data as Session).config || {},
-                          null,
-                          2,
-                        ) || "—"}
-                      </pre>
-                    </ScrollArea>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Session ID
-                    </label>
-                    <p className="text-sm mt-1 font-mono">
-                      {(data as Conversation).sessionId}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Agent ID
-                    </label>
-                    <p className="text-sm mt-1 font-mono">
-                      {(data as Conversation).agentId || "—"}
-                    </p>
-                  </div>
-                </div>
-              )}
+              {isEditing && canEdit
+                ? itemType === "agent"
+                  ? renderAgentForm()
+                  : itemType === "session"
+                    ? renderSessionForm()
+                    : itemType === "conversation"
+                      ? renderConversationForm()
+                      : null
+                : renderKeyValuePairs(data)}
             </ScrollArea>
           </TabsContent>
 
