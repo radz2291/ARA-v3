@@ -50,8 +50,8 @@ export const handleGetKernelList: RequestHandler = (req, res) => {
   try {
     const { type, search, agentId } = req.query;
 
-    // Fetch metadata only from storage (lightweight list)
-    const sessions = storage.sessions.listMetadata();
+    // Fetch full session data to access config.model
+    const sessions = storage.sessions.list();
     const agents = storage.agents.listMetadata();
     const conversations = storage.conversations.listMetadata();
     const artifacts = storage.artifacts.listMetadata();
@@ -68,18 +68,18 @@ export const handleGetKernelList: RequestHandler = (req, res) => {
       }
     });
 
-    // Resolve session agentId from conversations and derive name from latest conversation
-    const resolvedSessions = sessions.map((session) => {
+    // Resolve session agentId from conversations and use config.model for name
+    const resolvedSessions: KernelListItem[] = sessions.map((session) => {
       const agentIdFromConv = sessionToAgentMap.get(session.id);
-      // Get conversations for this session
-      const sessionConvs = conversations.filter(
-        (c) => c.sessionId === session.id,
-      );
-      const latestConv = sessionConvs.length > 0 ? sessionConvs[0] : null;
 
       return {
-        ...session,
-        name: session.name || "session",
+        id: session.id,
+        name: session.config?.model || "session",
+        type: "session" as const,
+        subtype: session.config?.model,
+        createdAt: session.createdAt,
+        updatedAt: session.createdAt,
+        itemCount: 0,
         agentId: agentIdFromConv,
       };
     });
