@@ -89,7 +89,7 @@ export function ArtifactPanel({
           {/* Content tab */}
           <TabsContent value="content" className="flex-1 min-h-0 p-5 pt-3">
             {editable ? (
-              artifact.type === "conversation" ? (
+              (artifact.type as string) === "conversation" ? (
                 <ConversationEditor artifact={artifact} onSaved={onUpdated} />
               ) : (
                 <ArtifactEditor artifact={artifact} onSaved={onUpdated} />
